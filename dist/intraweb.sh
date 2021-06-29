@@ -738,6 +738,8 @@ intraweb-run() {
 intraweb-update-web() {
   echoerrandexit TODO
 }
+ACTION="" # set in the main CLI; declared here for completness
+VALID_ACTIONS="build run update-web"
 usage() {
   echo "TODO"
 }
@@ -792,7 +794,6 @@ fi
 
 [[ -z "${ASSUME_DEFAULTS:-}" ]] || echofmt "Running with default values..."
 
-VALID_ACTIONS="build run update-web"
 case "${ACTION}" in
   build|run|update-web)
     intraweb-${ACTION} ;;

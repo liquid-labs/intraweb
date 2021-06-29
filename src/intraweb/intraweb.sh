@@ -18,7 +18,6 @@ fi
 
 [[ -z "${ASSUME_DEFAULTS:-}" ]] || echofmt "Running with default values..."
 
-VALID_ACTIONS="build run update-web"
 case "${ACTION}" in
   build|run|update-web)
     intraweb-${ACTION} ;;
