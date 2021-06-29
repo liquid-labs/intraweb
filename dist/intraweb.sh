@@ -732,14 +732,49 @@ intraweb-build() {
   fi
   google-projects-create ${CREATE_OPTS}
 }
+intraweb-init() {
+  [[ -d "${INTRAWEB_DB}" ]] || mkdir "${INTRAWEB_DB}"
+  intraweb-init-lib-ensure-settings
+}
+
+intraweb-init-lib-ensure-settings() {
+  [[ -f "${INTRAWEB_SETTINGS_FILE}" ]] || touch "${INTRAWEB_SETTINGS_FILE}"
+  source "${INTRAWEB_SETTINGS_FILE}"
+
+  local INTRAWEB_PROJECT_PREFIX_PROMPT='Default Google project prefix?'
+
+  local SETTING PROMPT_VAR
+  for SETTING in ${INTRAWEB_SETTINGS}; do
+    PROMPT_VAR="${SETTING}_PROMPT"
+    eval require-answer --force "'${!PROMPT_VAR}'" "${SETTING}" "'${!SETTING:-}'"
+  done
+
+  intraweb-init-lib-update-settings
+}
+
+intraweb-init-lib-update-settings() {
+  ! [[ -f "${INTRAWEB_SETTINGS_FILE}" ]] || rm "${INTRAWEB_SETTINGS_FILE}"
+  local SETTING
+  for SETTING in ${INTRAWEB_SETTINGS}; do
+    echo "${SETTING}='${!SETTING}'" >> "${INTRAWEB_SETTINGS_FILE}"
+  done
+}
 intraweb-run() {
   echoerrandexit TODO
 }
 intraweb-update-web() {
   echoerrandexit TODO
 }
-ACTION="" # set in the main CLI; declared here for completness
-VALID_ACTIONS="build run update-web"
+# set in the main CLI; declared here for completness
+ACTION=""
+
+VALID_ACTIONS="build init run update-web"
+INTRAWEB_SETTINGS="INTRAWEB_PROJECT_PREFIX"
+
+INTRAWEB_DB="${HOME}/.intraweb"
+INTRAWEB_CACHE="${INTRAWEB_DB}/cache"
+
+INTRAWEB_SETTINGS_FILE="${INTRAWEB_DB}/settings.sh"
 usage() {
   echo "TODO"
 }
@@ -785,6 +820,10 @@ google-check-access() {
 }
 # but NOT ./sources; ./sources contains exported 'sourceable' functions
 
+if [[ -f "${INTRAWEB_SETTINGS_FILE}" ]]; then
+  source "${INTRAWEB_SETTINGS_FILE}"
+fi
+
 eval "$(setSimpleOptions --script ASSUME_DEFAULTS: PROJECT_ID= -- "$@")"
 
 ACTION="${1:-}"
@@ -795,7 +834,7 @@ fi
 [[ -z "${ASSUME_DEFAULTS:-}" ]] || echofmt "Running with default values..."
 
 case "${ACTION}" in
-  build|run|update-web)
+  build|init|run|update-web)
     intraweb-${ACTION} ;;
   *)
     usage-bad-action ;;# will exit process
