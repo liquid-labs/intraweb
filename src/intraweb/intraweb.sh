@@ -9,6 +9,10 @@ import real_path
 
 source ./inc.sh
 
+if [[ -f "${INTRAWEB_SETTINGS_FILE}" ]]; then
+  source "${INTRAWEB_SETTINGS_FILE}"
+fi
+
 eval "$(setSimpleOptions --script ASSUME_DEFAULTS: PROJECT_ID= -- "$@")"
 
 ACTION="${1:-}"
@@ -19,7 +23,7 @@ fi
 [[ -z "${ASSUME_DEFAULTS:-}" ]] || echofmt "Running with default values..."
 
 case "${ACTION}" in
-  build|run|update-web)
+  build|init|run|update-web)
     intraweb-${ACTION} ;;
   *)
     usage-bad-action ;;# will exit process
