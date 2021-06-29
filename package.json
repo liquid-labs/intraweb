@@ -3,6 +3,7 @@
   "version": "1.0.0-alpha.0",
   "description": "Creates a secure static intraweb server using OAuth2 Proxy, gcloud, and Google authentication.",
   "scripts": {
+    "build": "make",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bin": {
