@@ -479,14 +479,323 @@ echoerrandexit() {
   fi
 }
 
-VALID_ACTIONS="build run update-web"
-
-ACTION="${1:-}"
-
-usage() {
-  echo "TODO: "
+field-to-label() {
+  local FIELD="${1}"
+  echo "${FIELD:0:1}$(echo "${FIELD:1}" | tr '[:upper:]' '[:lower:]' | tr '_' ' ')"
 }
 
+echo-label-and-values() {
+  eval "$(setSimpleOptions STDERR:e -- "$@")"
+
+  local FIELD="${1}"
+  local VALUES="${2:-}"
+  (( $# == 2 )) || VALUES="${!FIELD:-}"
+  local OUT
+
+  OUT="$(echo -n "$(field-to-label "$FIELD"): ")"
+  if (( $(echo "${VALUES}" | wc -l) > 1 )); then
+    OUT="${OUT}$(echo -e "\n${VALUES}" | sed '2,$ s/^/   /')" # indent
+  else # just one line
+    OUT="${OUT}$(echo "${VALUES}")"
+  fi
+
+  if [[ -z "$STDERR" ]]; then # echo to stdout
+    echo -e "$OUT"
+  else
+    echo -e "$OUT" >&2
+  fi
+}
+
+# Prompts the user for input and saves it to a var.
+# Arg 1: The prompt.
+# Arg 2: The name of the var to save the answer to. (BUG: Don't use 'VAR'. 'ANSWER' is always safe.)
+# Arg 3 (opt): Default value to use if the user just hits enter.
+#
+# The defult value will be added to the prompt.
+# If '--multi-line' is specified, the user may enter multiple lines, and end input with a line containing a single '.'.
+# Instructions to this effect will emitted. Also, in this mode, spaces in the answer will be preserved, while in
+# 'single line' mode, leading and trailing spaces will be removed.
+get-answer() {
+  eval "$(setSimpleOptions MULTI_LINE -- "$@")"
+  local PROMPT="$1"
+  local VAR="$2" # TODO: if name is 'VAR', then this breaks...
+  local DEFAULT="${3:-}"
+
+  if [[ -n "${DEFAULT}" ]]; then
+    if [[ -z "$MULTI_LINE" ]]; then
+      PROMPT="${PROMPT} (${DEFAULT}) "
+    else
+      PROMPT="${PROMPT}"$'\n''(Hit "<PERIOD><ENTER>" for default:'$'\n'"$DEFAULT"$'\n'')'
+    fi
+  fi
+
+  if [[ -z "$MULTI_LINE" ]]; then
+    read -r -p "$PROMPT" $VAR
+    if [[ -z ${!VAR:-} ]] && [[ -n "$DEFAULT" ]]; then
+      # MacOS dosen't support 'declare -g' :(
+      eval $VAR='"$DEFAULT"'
+    fi
+  else
+    local LINE
+    echo "$PROMPT"
+    echo "(End multi-line input with single '.')"
+    unset $VAR LINE
+    while true; do
+      IFS= read -r LINE
+      if [[ "$LINE" == '.' ]]; then
+        if [[ -z "${!VAR:-}" ]] && [[ -n "$DEFAULT" ]]; then
+          eval $VAR='"$DEFAULT"'
+        fi
+        break
+      else
+        list-add-item $VAR "$LINE"
+      fi
+    done
+  fi
+}
+
+# Functions as 'get-answer', but will continually propmt the user if no answer is given.
+# '--force' causes the default to be set to the previous answer and the query to be run again. This is mainly useful
+# internally and direct calls should generally note have cause to use this option. (TODO: let's rewrite this to 'unset'
+# the vars (?) and avoid the need for force?)
+require-answer() {
+  eval "$(setSimpleOptions FORCE MULTI_LINE -- "$@")"
+  local PROMPT="$1"
+  local VAR="$2" # TODO: if name is 'VAR', then this breaks...
+  local DEFAULT="${3:-}"
+
+  if [[ -n "$FORCE" ]] && [[ -z "$DEFAULT" ]]; then
+    DEFAULT="${!VAR}"
+  fi
+
+  # TODO: support 'pass-through' options in 'setSimpleOptions'
+  local OPTS=''
+  if [[ -n "$MULTI_LINE" ]]; then
+    OPTS="${OPTS}--multi-line "
+  fi
+  while [[ -z ${!VAR:-} ]] || [[ -n "$FORCE" ]]; do
+    get-answer ${OPTS} "$PROMPT" "$VAR" "$DEFAULT" # can't use "$@" because default may be overriden
+    if [[ -z ${!VAR:-} ]]; then
+      echoerr "A response is required."
+    else
+      FORCE='' # if forced into loop, then we un-force when we get an answer
+    fi
+  done
+}
+
+# Produces a 'yes/no' prompt, accepting 'y', 'yes', 'n', or 'no' (case insensitive). Unlike other prompts, this function
+# returns true or false, making it convenient for boolean tests.
+yes-no() {
+  default-yes() { return 0; }
+  default-no() { return 1; } # bash false-y
+
+  local PROMPT="${1:-}"
+  local DEFAULT="${2:-}"
+  local HANDLE_YES="${3:-default-yes}"
+  local HANDLE_NO="${4:-default-no}" # default to noop
+
+  local ANSWER=''
+  read -p "$PROMPT" ANSWER
+  if [[ -z "$ANSWER" ]] && [[ -n "$DEFAULT" ]]; then
+    case "$DEFAULT" in
+      Y*|y*)
+        $HANDLE_YES; return $?;;
+      N*|n*)
+        $HANDLE_NO; return $?;;
+      *)
+        echo "You must choose an answer."
+        yes-no "$PROMPT" "$DEFAULT" $HANDLE_YES $HANDLE_NO
+    esac
+  else
+    case "$(echo "$ANSWER" | tr '[:upper:]' '[:lower:]')" in
+      y|yes)
+        $HANDLE_YES; return $?;;
+      n|no)
+        $HANDLE_NO; return $?;;
+      *)
+        echo "Did not understand response, please answer 'y(es)' or 'n(o)'."
+        yes-no "$PROMPT" "$DEFAULT" $HANDLE_YES $HANDLE_NO;;
+    esac
+  fi
+}
+
+gather-answers() {
+  eval "$(setSimpleOptions VERIFY PROMPTER= SELECTOR= DEFAULTER= -- "$@")"
+  local FIELDS="${1:-}"
+
+  local FIELD VERIFIED
+  while [[ "${VERIFIED}" != true ]]; do
+    # collect answers
+    for FIELD in $FIELDS; do
+      local LABEL
+      LABEL="$(field-to-label "$FIELD")"
+
+      local PROMPT DEFAULT SELECT_OPTS
+      PROMPT="$({ [[ -n "$PROMPTER" ]] && $PROMPTER "$FIELD" "$LABEL"; } || echo "${LABEL}: ")"
+      DEFAULT="$({ [[ -n "$DEFAULTER" ]] && $DEFAULTER "$FIELD"; } || echo '')"
+      if [[ -n "$SELECTOR" ]] && SELECT_OPS="$($SELECTOR "$FIELD")" && [[ -n "$SELECT_OPS" ]]; then
+        local FIELD_SET="${FIELD}_SET"
+        if [[ -z ${!FIELD:-} ]] && [[ "${!FIELD_SET}" != 'true' ]] || [[ "$VERIFIED" == false ]]; then
+          unset $FIELD
+          PS3="${PROMPT}"
+          selectDoneCancel "$FIELD" SELECT_OPS
+          unset PS3
+        fi
+      else
+        local OPTS=''
+        # if VERIFIED is set, but false, then we need to force require-answer to set the var
+        [[ "$VERIFIED" == false ]] && OPTS='--force '
+        if [[ "${FIELD}" == *: ]]; then
+          FIELD=${FIELD/%:/}
+          OPTS="${OPTS}--multi-line "
+        fi
+
+        require-answer ${OPTS} "${PROMPT}" $FIELD "$DEFAULT"
+      fi
+    done
+
+    # verify, as necessary
+    if [[ -z "${VERIFY}" ]]; then
+      VERIFIED=true
+    else
+      verify() { VERIFIED=true; }
+      no-verify() { VERIFIED=false; }
+      echo
+      echo "Verify the following:"
+      for FIELD in $FIELDS; do
+        FIELD=${FIELD/:/}
+        echo-label-and-values "${FIELD}" "${!FIELD:-}"
+      done
+      echo
+      yes-no "Are these values correct? (y/N) " N verify no-verify
+    fi
+  done
+}
+function real_path {
+  local FILE="${1:-}"
+  if [[ -z "$FILE" ]]; then
+    echo "'real_path' requires target file specified." >&2
+    return 1
+  elif [[ ! -e "$FILE" ]]; then
+    echo "Target file '$FILE' does not exist." >&2
+    return 1
+  fi
+
+  function trim_slash {
+    # sed adds a newline ()
+    printf "$1" | sed 's/\/$//' | tr -d '\n'
+  }
+  # [[ -h /foo/link_dir ]] works, but [[ -h /foo/link_dir/ ]] does not!
+  FILE=`trim_slash "$FILE"`
+
+  if [[ -h "$FILE" ]]; then
+    function resolve_link {
+      local POSSIBLE_REL_LINK="${1:-}"
+      local APPEND="${2:-}"
+      if [[ "$POSSIBLE_REL_LINK" == /* ]]; then
+        # for some reason 'echo -n' was echoing the '-n' when this was used
+        # included in the catalyst-scripts. Not sure why, and don't know how
+        # to test, but 'printf' does what we need.
+        printf "$POSSIBLE_REL_LINK${APPEND}"
+      else
+        # Now we go into the dir containg the link and then navigate the possibly
+        # relative link to the real dir. The subshell preserves the caller's PWD.
+        (cd "$(dirname "$FILE")"
+        cd "$POSSIBLE_REL_LINK"
+        printf "${PWD}${APPEND}")
+      fi
+    }
+
+    if [[ ! -d "$FILE" ]]; then
+      # we need to get the real path to the real file
+      local REAL_FILE_LINK_PATH="$(readlink "$FILE")"
+      resolve_link "$(dirname "$REAL_FILE_LINK_PATH")" "/$(basename "$REAL_FILE_LINK_PATH")"
+    else
+      # we need to get the real path of the linked directory
+      resolve_link "$(readlink "$FILE")"
+    fi
+  else
+    printf "$FILE"
+  fi
+}
+
+intraweb-build() {
+  # google-projects-create can be called directly for other purposes, se we have to provide a default project ID if none
+  # is set.
+  local CREATE_OPTS=""
+  if [[ -n "${ASSUME_DEFAULTS:-}" ]]; then
+    CREATE_OPTS="--non-interactive --create-if-necessary"
+    [[ -n "${PROJECT_ID:-}" ]] || PROJECT_ID="intraweb"
+  fi
+  if [[ -n "${PROJECT_ID:-}" ]]; then
+    CREATE_OPTS="${CREATE_OPTS} --project-id '${PROJECT_ID}'"
+  fi
+  google-projects-create ${CREATE_OPTS}
+}
+intraweb-run() {
+  echoerrandexit TODO
+}
+intraweb-update-web() {
+  echoerrandexit TODO
+}
+usage() {
+  echo "TODO"
+}
+
+usage-bad-action() {
+  usage
+  echoerrandexit "\nMust specify a valid action as first argument:\n\nintraweb [ $(echo "${VALID_ACTIONS}" | sed 's/ / \| /g') ]\n\nSee usage above for further details."
+}
+# --non-interactive : causes flows that would otherwise result in a user prompt to instead halt with an error
+google-projects-create() {
+  # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
+  eval "$(setSimpleOptions PROJECT_ID= CREATE_IF_NECESSARY NON_INTERACTIVE: NO_ACCOUNT_REPORT:A SKIP_AUTH_CHECK -- "$@")"
+
+  if [[ -z "${SKIP_AUTH_CHECK}" ]]; then
+    google-check-access
+  fi
+
+  if [[ -z "${NO_ACCOUNT_REPORT}" ]]; then
+    local ACTIVE_GCLOUD_ACCOUNT=$(gcloud config configurations list --filter='is_active=true' --format 'value(properties.core.account)')
+    echofmt "Using account '${ACTIVE_GCLOUD_ACCOUNT}'..."
+  fi
+
+  if [[ -z "${PROJECT_ID:-}" ]]; then
+    if [[ -n "${NON_INTERACTIVE:-}" ]]; then
+      echoerrandexit "Cannot determine valid default for 'PROJECT_ID' when invoking google-project-create in non-interactive mode. A valid value must be provided prior to invocation."
+    else
+      get-answer "Name for the google project to create for intraweb?" PROJECT_ID 'intraweb'
+    fi
+  fi
+  if ! gcloud projects describe "${PROJECT_ID}" >/dev/null; then
+    [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
+      || echoerrandexit "Project does not exist and 'create if necessary' option is not set while invoking google-projects-create in non-interactive mode."
+    if [[ -n "${CREATE_IF_NECESSARY}" ]] \
+        || yes-no "Project '${PROJECT_ID}' not found. Attempt to create?" 'Y'; then
+      gcloud projects create "${PROJECT_ID}"
+    fi
+  fi
+   # else the project already exists and there's nothing to do
+}
+google-check-access() {
+  gcloud projects list > /dev/null ||
+    echoerrandexit "\nIt does not appear we can access the Google Cloud. This may be due to stale or lack of  authentication tokens. See above for more information."
+}
+# but NOT ./sources; ./sources contains exported 'sourceable' functions
+
+eval "$(setSimpleOptions --script ASSUME_DEFAULTS: PROJECT_ID= -- "$@")"
+
+ACTION="${1:-}"
 if [[ -z "${ACTION}" ]]; then
-  echoerrandexit "Must specify a valid action as first argument:\n\nintraweb [ $(echo "${VALID_ACTIONS}" | sed 's/ / \| /g') ]"
+  usage-bad-action # will exit process
 fi
+
+[[ -z "${ASSUME_DEFAULTS:-}" ]] || echofmt "Running with default values..."
+
+VALID_ACTIONS="build run update-web"
+case "${ACTION}" in
+  build|run|update-web)
+    intraweb-${ACTION} ;;
+  *)
+    usage-bad-action ;;# will exit process
+esac

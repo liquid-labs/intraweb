@@ -1,9 +1,4 @@
-#!/usr/bin/env bash
-
-# bash strict settings
-set -o errexit # exit on errors; set -e
-set -o nounset # exit on use of uninitialized variable
-set -o pipefail # exit if any part of a pipeline fails (rather than just on failure of final piece)
+# note, this file is generated to be source-able, but not directly executable
 # http://linuxcommand.org/lc3_adv_tput.php
 red=`tput setaf 1`
 green=`tput setaf 2`
@@ -671,23 +666,7 @@ gather-answers() {
   done
 }
 
-ACTIVE_GCLOUD_ACCOUNT=$(gcloud config configurations list --filter='is_active=true' --format 'value(properties.core.account)')
-echofmt "Using account '${ACTIVE_GCLOUD_ACCOUNT}'..."
-
-if [[ -z "${INTRAWEB_PROJECT_ID:-}" ]]; then
-  if [[ -n "${ASSUME_DEFAULTS}" ]]; then
-    INTRAWEB_PROJECT_ID="intraweb"
-  else
-    get-answer "Name for the google project to create for intraweb?" INTRAWEB_PROJECT_ID 'intraweb'
-  fi
-fi
-
- if ! gcloud projects describe "${INTRAWEB_PROJECT_ID}" >/dev/null; then
-
-   echofmt "Did not"
-   if [[ -n "${ASSUME_DEFAULTS}" ]] \
-        || yes-no "Project '${INTRAWEB_PROJECT_ID}' not found. Attempt to create?" 'Y'; then
-      gcloud projects create "${INTRAWEB_PROJECT_ID}"
-    fi
- fi
- # else the project already exists and there's nothing to do
+google-check-access() {
+  gcloud projects list > /dev/null ||
+    echoerrandexit "\nIt does not appear we can access the Google Cloud. This may be due to stale or lack of  authentication tokens. See above for more information."
+}
