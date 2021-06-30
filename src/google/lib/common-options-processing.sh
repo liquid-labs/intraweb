@@ -19,8 +19,8 @@ google-lib-common-options-processing() {
 }
 
 google-lib-common-options-check-access-and-report() {
-  [[ -n "${SKIP_AUTH_CHECK}" ]] || {
+  [[ -n "${SKIP_AUTH_CHECK:-}" ]] || {
     google-check-access
-    [[ -n "${NO_ACCOUNT_REPORT}" ]] || google-account-report
+    [[ -n "${NO_ACCOUNT_REPORT:-}" ]] || google-account-report
   }
 }
