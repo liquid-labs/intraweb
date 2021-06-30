@@ -734,11 +734,15 @@ intraweb-build() {
     CREATE_OPTS="${CREATE_OPTS} --project-id ${PROJECT_ID}"
     IAP_OPTS="${IAP_OPTS} --project-id ${PROJECT_ID}"
   fi
+  # no 'eval' necessary here; we don't expect any spaces (see note below in 'google-projects-iap-oauth-setup' call)
   google-projects-create ${CREATE_OPTS}
 
   [[ -z "${APPLICATION_TITLE}" ]] || IAP_OPTS="${IAP_OPTS} --application-title '${APPLICATION_TITLE}'"
   [[ -z "${SUPPORT_EMAIL}" ]] || IAP_OPTS="${IAP_OPTS} --support-email '${SUPPORT_EMAIL}'"
-  google-projects-iap-oauth-setup ${IAP_OPTS}
+  # without the eval, the '-quotes get read as literal, to the tokens end up being like:
+  # --application_title|'Foo|Bar'|--support_email|'foo@bar.com'
+  # as if the email literally began and ended with ticks and any title with spaces gets cut up.
+  eval google-projects-iap-oauth-setup ${IAP_OPTS}
 }
 intraweb-init() {
   local DIR
@@ -872,13 +876,13 @@ google-projects-iap-oauth-setup() {
   google-lib-common-options-processing
 
   local IAP_SERVICE='iap.googleapis.com'
-  local IAP_AVAILABLE
-  IAP_AVAILABLE=$(gcloud services list --project=${PROJECT_ID} \
+  local IAP_STATE
+  IAP_STATE=$(gcloud services list --project=${PROJECT_ID} \
     --available \
     --filter="name:${IAP_SERVICE}" \
     --format='value(name)')
-  if [[ -z "${IAP_AVAILABLE}" ]]; then
-    echofmt "Service '${IAP_SERVICE}' already configure for project '${PROJECT_ID}'..."
+  if [[ "${IAP_STATE}" == 'ENABLED' ]]; then
+    echofmt "Service '${IAP_SERVICE}' already enabled for project '${PROJECT_ID}'."
   else
     gcloud services enable ${IAP_SERVICE} --project=${PROJECT_ID} \
       && echofmt "IAP service enableled for project '${PROJECT_ID}'..." \
@@ -886,8 +890,10 @@ google-projects-iap-oauth-setup() {
   fi
 
   # Check if OAuth brand is configured, and if not, attempt to configure it.
-  gcloud alpha iap oauth-brands list --project=${PROJECT_ID} --quiet >/dev/null >&2 \
-    && echofmt "IAP OAuth brands already configured..." \
+  local BRAND_NAME
+  BRAND_NAME=$(gcloud alpha iap oauth-brands list --project=${PROJECT_ID} --format='value(name)')
+  [[ -n ${BRAND_NAME} ]] \
+    && echofmt "IAP OAuth brand '${BRAND_NAME}' already configured..." \
     || {
       # Check if we have 'non-interactive' set and blow up if we don't have the data we need.
       [[ -z "${NON_INTERACTIVE}" ]] \
@@ -897,10 +903,23 @@ google-projects-iap-oauth-setup() {
       require-answer 'Application title (for OAuth authentication)?' APPLICATION_TITLE "${APPLICATION_TITLE}"
       require-answer 'Support email for for OAuth authentication problems?' SUPPORT_EMAIL "${SUPPORT_EMAIL}"
       # Finally, all the data is gathered and we're ready to actually configure.
-      gcloud alpha iap oauth-brands create --application-title="${APPLICATION_TITLE}" --support-email="${SUPPORT_EMAIL}" \
+      BRAND_NAME=$(gcloud alpha iap oauth-brands create --project=${PROJECT_ID} \
+          --application_title="${APPLICATION_TITLE}" \
+          --support_email="${SUPPORT_EMAIL}" \
+          --format='value(name)') \
         && echofmt "IAP-OAuth brand identify configured for project '${PROJECT_ID}' with title '${APPLICATION_TITLE}' and support email '${SUPPORT_EMAIL}'..." \
         || echoerrandexit "Error configuring OAuth brand identity. Refer to any errors above. Try again later or enable manually."
     }
+
+    # now we can setup the intraweb client
+    gcloud alpha iap oauth-clients describe "${APPLICATION_TITLE}" \
+        --brand "${BRAND_NAME}" \
+        --project ${PROJECT_ID} >/dev/null >&2 \
+      && echofmt "OAuth client '${APPLICATION_TITLE}' already exists for brand '${BRAND_NAME}'..." \
+      || {
+        echofmt "Attempting to create new OAuth client..."
+        gcloud alpha iap oauth-clients create ${BRAND_NAME} --display_name "${APPLICATION_TITLE}"
+      }
 }
 google-account-report() {
   local ACTIVE_GCLOUD_ACCOUNT=$(gcloud config configurations list --filter='is_active=true' --format 'value(properties.core.account)')
@@ -989,7 +1008,8 @@ intraweb-helper-verify-settings() {
 if [[ -n "${ASSUME_DEFAULTS}" ]]; then
   [[ -n "${PROJECT_ID:-}" ]] || PROJECT_ID="${INTRAWEB_PROJECT_PREFIX}-intraweb"
 
-  [[ -n "${APPLICATION_TITLE}" ]] || [[ -z "${INTRAWEB_COMPANY_NAME}" ]] || APPLICATION_TITLE="${INTRAWEB_COMPANY_NAME}"
+  [[ -n "${APPLICATION_TITLE}" ]] || [[ -z "${INTRAWEB_COMPANY_NAME}" ]] \
+    || APPLICATION_TITLE="${INTRAWEB_COMPANY_NAME} Intraweb"
 
   [[ -n "${SUPPORT_EMAIL}" ]] || [[ -z "${INTRAWEB_OAUTH_SUPPORT_EMAIL}" ]] || SUPPORT_EMAIL="${INTRAWEB_OAUTH_SUPPORT_EMAIL}"
 

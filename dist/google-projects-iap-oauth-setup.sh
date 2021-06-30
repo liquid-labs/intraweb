@@ -721,67 +721,54 @@ fill-rand() {
     echo "${CONCAT}"
   fi
 }
-# TODO: we have older gcloud code... somewhere that handles some of this stuff. Like, maybe dealing with the project 'name'
-
-# --non-interactive : causes flows that would otherwise result in a user prompt to instead halt with an error
-google-projects-create() {
+google-projects-iap-oauth-setup() {
   # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
-  eval "$(setSimpleOptions $(google-lib-common-options-spec) ORGANIZATION_ID= CREATE_IF_NECESSARY NO_RETRY_NAMES: RETRY_COUNT:= PROJECT_ID_OUTPUT_VAR -- "$@")"
-  # set default and common processing
+  eval "$(setSimpleOptions $(google-lib-common-options-spec) APPLICATION_TITLE:t= SUPPORT_EMAIL:e= -- "$@")"
   google-lib-common-options-processing
-  [[ -n "${RETRY_COUNT}" ]] || RETRY_COUNT=3
 
-
-  [[ -n "${ORGANIZATION_ID}" ]] || echoerrandexit 'Organization ID (--organization-id=xxxx) is required.'
-
-  echofmt "Testing if project '${PROJECT_ID}' already exists..."
-  if ! gcloud projects describe "${PROJECT_ID}" >/dev/null 2>&1; then
-    [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
-      || echoerrandexit "Project does not exist and 'create if necessary' option is not set while invoking google-projects-create in non-interactive mode."
-    if [[ -n "${CREATE_IF_NECESSARY}" ]] \
-        || yes-no "Project '${PROJECT_ID}' not found. Attempt to create?" 'Y'; then
-      local FINAL_ERROR
-      google-projects-create-helper-command || { # if first attempt doesn't succeed, maybe we can retry?
-        [[ -z "${NO_RETRY_NAMES}" ]] && { # retry is allowed
-          local I=1
-          while (( ${I} <= ${RETRY_COUNT} )); do
-            echofmt "There seems to have been a problem; this may be because the global project ID is taken. Retrying ${I} of ${RETRY_COUNT}..."
-            { google-projects-create-helper-command &&  break; } || {
-              I=$(( ${I} + 1 ))
-              (( ${I} <= ${RETRY_COUNT} ))
-            }
-          done
-        } # retry allowed block
-      } || { # final; we're out of retries
-        echoerrandexit "Could not create project. Error message on last attempt was: $(<"${INTRAWEB_TMP_ERROR}")"
-      }
-    fi # CREATE_IF_NECESSARY
-  else # gcloud projects describe found something and the project exists
-    google-projects-create-helper-set-var
-    echofmt "Project '${PROJECT_ID}' already exists under organization ${ORGANIZATION_ID}."
-  fi
-}
-
-# helper functions; these functions rely on the parent function variables and are not intended to be called directly by
-# anyone else
-
-google-projects-create-helper-set-var() {
-  [[ -z "${PROJECT_ID_OUTPUT_VAR}" ]] || eval "${PROJECT_ID_OUTPUT_VAR}='${EFFECTIVE_NAME}'"
-}
-
-google-projects-create-helper-command() {
-  local EFFECTIVE_NAME
-  if [[ -z "${I:-}" ]]; then # we are in the first go around
-    EFFECTIVE_NAME="${PROJECT_ID}"
+  local IAP_SERVICE='iap.googleapis.com'
+  local IAP_STATE
+  IAP_STATE=$(gcloud services list --project=${PROJECT_ID} \
+    --available \
+    --filter="name:${IAP_SERVICE}" \
+    --format='value(name)')
+  if [[ "${IAP_STATE}" == 'ENABLED' ]]; then
+    echofmt "Service '${IAP_SERVICE}' already enabled for project '${PROJECT_ID}'."
   else
-    # TODO: make the max string length 'GOOGLE_MAX_PROJECT_ID_LENGTH' or sometihng and load it
-    # for every failure, we try a longer random number
-    fill-rand --max-string-length 30 --max-number-length $(( 5 * ${I} )) --output-var EFFECTIVE_NAME "${PROJECT_ID}-"
+    gcloud services enable ${IAP_SERVICE} --project=${PROJECT_ID} \
+      && echofmt "IAP service enableled for project '${PROJECT_ID}'..." \
+      || echoerrandexit "Error enabling service. Refer to any error report above. Try again later or enable manually."
   fi
-  echofmt "Attempting to create project '${EFFECTIVE_NAME}'..."
-  # on success, will set PROJECT_ID_OUTPUT_VAR when appropriate; otherwise, exits with a failure code
-  gcloud projects create "${EFFECTIVE_NAME}" --organization="${ORGANIZATION_ID}" 2> "${INTRAWEB_TMP_ERROR}" && {
-    echofmt "Created project '${EFFECTIVE_NAME}' under organization ${ORGANIZATION_ID}"
-    google-projects-create-helper-set-var
-  }
+
+  # Check if OAuth brand is configured, and if not, attempt to configure it.
+  local BRAND_NAME
+  BRAND_NAME=$(gcloud alpha iap oauth-brands list --project=${PROJECT_ID} --format='value(name)')
+  [[ -n ${BRAND_NAME} ]] \
+    && echofmt "IAP OAuth brand '${BRAND_NAME}' already configured..." \
+    || {
+      # Check if we have 'non-interactive' set and blow up if we don't have the data we need.
+      [[ -z "${NON_INTERACTIVE}" ]] \
+        || { [[ -n "${APPLICATION_TITLE}" ]] && [[ -n "${SUPPORT_EMAIL}" ]]; } \
+        || echoerrandexit "Must provide application title and support email when running in non-interactive mode."
+      # If the defaults are present, then it is considered answered and nothing happens.
+      require-answer 'Application title (for OAuth authentication)?' APPLICATION_TITLE "${APPLICATION_TITLE}"
+      require-answer 'Support email for for OAuth authentication problems?' SUPPORT_EMAIL "${SUPPORT_EMAIL}"
+      # Finally, all the data is gathered and we're ready to actually configure.
+      BRAND_NAME=$(gcloud alpha iap oauth-brands create --project=${PROJECT_ID} \
+          --application_title="${APPLICATION_TITLE}" \
+          --support_email="${SUPPORT_EMAIL}" \
+          --format='value(name)') \
+        && echofmt "IAP-OAuth brand identify configured for project '${PROJECT_ID}' with title '${APPLICATION_TITLE}' and support email '${SUPPORT_EMAIL}'..." \
+        || echoerrandexit "Error configuring OAuth brand identity. Refer to any errors above. Try again later or enable manually."
+    }
+
+    # now we can setup the intraweb client
+    gcloud alpha iap oauth-clients describe "${APPLICATION_TITLE}" \
+        --brand "${BRAND_NAME}" \
+        --project ${PROJECT_ID} >/dev/null >&2 \
+      && echofmt "OAuth client '${APPLICATION_TITLE}' already exists for brand '${BRAND_NAME}'..." \
+      || {
+        echofmt "Attempting to create new OAuth client..."
+        gcloud alpha iap oauth-clients create ${BRAND_NAME} --display_name "${APPLICATION_TITLE}"
+      }
 }
