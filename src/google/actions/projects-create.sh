@@ -1,27 +1,14 @@
 # --non-interactive : causes flows that would otherwise result in a user prompt to instead halt with an error
 google-projects-create() {
   # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
-  eval "$(setSimpleOptions ORGANIZATION_ID= PROJECT_ID= CREATE_IF_NECESSARY NON_INTERACTIVE: NO_ACCOUNT_REPORT:A SKIP_AUTH_CHECK NO_RETRY_NAMES: RETRY_COUNT:= PROJECT_ID_OUTPUT_VAR -- "$@")"
-
-  [[ -n "${ORGANIZATION_ID}" ]] || echoerrandexit 'Organization ID (--organization-id=xxxx) is required.'
+  eval "$(setSimpleOptions $(google-lib-common-options-spec) ORGANIZATION_ID= CREATE_IF_NECESSARY NO_RETRY_NAMES: RETRY_COUNT:= PROJECT_ID_OUTPUT_VAR -- "$@")"
+  # set default and common processing
+  google-lib-common-options-processing
   [[ -n "${RETRY_COUNT}" ]] || RETRY_COUNT=3
 
-  if [[ -z "${SKIP_AUTH_CHECK}" ]]; then
-    google-check-access
-  fi
 
-  if [[ -z "${NO_ACCOUNT_REPORT}" ]]; then
-    local ACTIVE_GCLOUD_ACCOUNT=$(gcloud config configurations list --filter='is_active=true' --format 'value(properties.core.account)')
-    echofmt "Using account '${ACTIVE_GCLOUD_ACCOUNT}'..."
-  fi
+  [[ -n "${ORGANIZATION_ID}" ]] || echoerrandexit 'Organization ID (--organization-id=xxxx) is required.'
 
-  if [[ -z "${PROJECT_ID:-}" ]]; then
-    if [[ -n "${NON_INTERACTIVE:-}" ]]; then
-      echoerrandexit "Cannot determine valid default for 'PROJECT_ID' when invoking google-project-create in non-interactive mode. A valid value must be provided prior to invocation."
-    else
-      get-answer "Google project ID for new intraweb project?" PROJECT_ID "${PROJECT_ID:-}"
-    fi
-  fi
   if ! gcloud projects describe "${PROJECT_ID}" >/dev/null 2>&1; then
     [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
       || echoerrandexit "Project does not exist and 'create if necessary' option is not set while invoking google-projects-create in non-interactive mode."
@@ -44,11 +31,18 @@ google-projects-create() {
       }
     fi # CREATE_IF_NECESSARY
   else # gcloud projects describe found something and the project exists
+    google-projects-create-set-var
     echofmt "Project '${PROJECT_ID}' already exists under organization ${ORGANIZATION_ID}."
   fi
 }
 
-# This is never meant to be called by anyone but google-projects-create. It uses that functions variables.
+# helper functions; these functions rely on the parent function variables and are not intended to be called directly by
+# anyone else
+
+google-projects-create-set-var() {
+  [[ -z "${PROJECT_ID_OUTPUT_VAR}" ]] || eval "${PROJECT_ID_OUTPUT_VAR}='${EFFECTIVE_NAME}'"
+}
+
 google-projects-create-command-helper() {
   local EFFECTIVE_NAME
   if [[ -z "${I:-}" ]]; then # we are in the first go around
@@ -62,6 +56,6 @@ google-projects-create-command-helper() {
   # on success, will set PROJECT_ID_OUTPUT_VAR when appropriate; otherwise, exits with a failure code
   gcloud projects create "${EFFECTIVE_NAME}" --organization="${ORGANIZATION_ID}" 2> "${INTRAWEB_TMP_ERROR}" && {
     echofmt "Created project '${EFFECTIVE_NAME}' under organization ${ORGANIZATION_ID}"
-    [[ -z "${PROJECT_ID_OUTPUT_VAR}" ]] || eval "${PROJECT_ID_OUTPUT_VAR}='${EFFECTIVE_NAME}'"
+    google-projects-create-set-var
   }
 }
