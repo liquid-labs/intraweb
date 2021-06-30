@@ -565,7 +565,7 @@ require-answer() {
   local DEFAULT="${3:-}"
 
   if [[ -n "$FORCE" ]] && [[ -z "$DEFAULT" ]]; then
-    DEFAULT="${!VAR}"
+    DEFAULT="${!VAR:-}"
   fi
 
   # TODO: support 'pass-through' options in 'setSimpleOptions'
@@ -720,20 +720,31 @@ function real_path {
 }
 
 intraweb-build() {
-  # google-projects-create can be called directly for other purposes, se we have to provide a default project ID if none
-  # is set.
-  local CREATE_OPTS=""
+  # first, we do our own global auth check
+  google-lib-common-options-check-access-and-report
+  # and now we can skip the auth check for the individual steps
+  local COMMON_OPTS="--skip-auth-check"
+  local CREATE_OPTS="${COMMON_OPTS} --organization-id ${ORGANIZATION_ID}"
+  local IAP_OPTS="${COMMON_OPTS}"
   if [[ -n "${ASSUME_DEFAULTS:-}" ]]; then
-    CREATE_OPTS="--non-interactive --create-if-necessary"
-    [[ -n "${PROJECT_ID:-}" ]] || PROJECT_ID="intraweb"
+    CREATE_OPTS="${CREATE_OPTS} --non-interactive --create-if-necessary"
+    IAP_OPTS="${IAP_OPTS} --non-interactive"
   fi
   if [[ -n "${PROJECT_ID:-}" ]]; then
-    CREATE_OPTS="${CREATE_OPTS} --project-id '${PROJECT_ID}'"
+    CREATE_OPTS="${CREATE_OPTS} --project-id ${PROJECT_ID}"
+    IAP_OPTS="${IAP_OPTS} --project-id ${PROJECT_ID}"
   fi
   google-projects-create ${CREATE_OPTS}
+
+  [[ -z "${APPLICATION_TITLE}" ]] || IAP_OPTS="${IAP_OPTS} --application-title '${APPLICATION_TITLE}'"
+  [[ -z "${SUPPORT_EMAIL}" ]] || IAP_OPTS="${IAP_OPTS} --support-email '${SUPPORT_EMAIL}'"
+  google-projects-iap-oauth-setup ${IAP_OPTS}
 }
 intraweb-init() {
-  [[ -d "${INTRAWEB_DB}" ]] || mkdir "${INTRAWEB_DB}"
+  local DIR
+  for DIR in INTRAWEB_DB INTRAWEB_CACHE; do
+    [[ -d "${!DIR}" ]] || mkdir "${!DIR}"
+  done
   intraweb-init-lib-ensure-settings
 }
 
@@ -741,12 +752,15 @@ intraweb-init-lib-ensure-settings() {
   [[ -f "${INTRAWEB_SETTINGS_FILE}" ]] || touch "${INTRAWEB_SETTINGS_FILE}"
   source "${INTRAWEB_SETTINGS_FILE}"
 
+  local INTRAWEB_DEFAULT_ORGANIZATION_ID_PROMPT='Default Organization ID—a number—to nest projects under?'
   local INTRAWEB_PROJECT_PREFIX_PROMPT='Default Google project prefix?'
+  local INTRAWEB_COMPANY_NAME_PROMPT='Default company name?'
+  local INTRAWEB_OAUTH_SUPPORT_EMAIL_PROMPT='Default OAuth authentication support email?'
 
   local SETTING PROMPT_VAR
   for SETTING in ${INTRAWEB_SETTINGS}; do
     PROMPT_VAR="${SETTING}_PROMPT"
-    eval require-answer --force "'${!PROMPT_VAR}'" "${SETTING}" "'${!SETTING:-}'"
+    eval require-answer --force "'${!PROMPT_VAR:=${SETTING}?}'" "${SETTING}" "'${!SETTING:-}'"
   done
 
   intraweb-init-lib-update-settings
@@ -767,12 +781,17 @@ intraweb-update-web() {
 }
 # set in the main CLI; declared here for completness
 ACTION=""
+ASSUME_DEFAULTS=""
+PROJECT_ID=""
+ORGANIZATION_ID=""
+# end cli option globals
 
 VALID_ACTIONS="build init run update-web"
-INTRAWEB_SETTINGS="INTRAWEB_PROJECT_PREFIX"
+INTRAWEB_SETTINGS="INTRAWEB_DEFAULT_ORGANIZATION_ID INTRAWEB_PROJECT_PREFIX INTRAWEB_COMPANY_NAME INTRAWEB_OAUTH_SUPPORT_EMAIL"
 
 INTRAWEB_DB="${HOME}/.intraweb"
 INTRAWEB_CACHE="${INTRAWEB_DB}/cache"
+INTRAWEB_TMP_ERROR="${INTRAWEB_CACHE}/temp-error.txt"
 
 INTRAWEB_SETTINGS_FILE="${INTRAWEB_DB}/settings.sh"
 usage() {
@@ -783,40 +802,160 @@ usage-bad-action() {
   usage
   echoerrandexit "\nMust specify a valid action as first argument:\n\nintraweb [ $(echo "${VALID_ACTIONS}" | sed 's/ / \| /g') ]\n\nSee usage above for further details."
 }
+# TODO: we have older gcloud code... somewhere that handles some of this stuff. Like, maybe dealing with the project 'name'
+
 # --non-interactive : causes flows that would otherwise result in a user prompt to instead halt with an error
 google-projects-create() {
   # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
-  eval "$(setSimpleOptions PROJECT_ID= CREATE_IF_NECESSARY NON_INTERACTIVE: NO_ACCOUNT_REPORT:A SKIP_AUTH_CHECK -- "$@")"
+  eval "$(setSimpleOptions $(google-lib-common-options-spec) ORGANIZATION_ID= CREATE_IF_NECESSARY NO_RETRY_NAMES: RETRY_COUNT:= PROJECT_ID_OUTPUT_VAR -- "$@")"
+  # set default and common processing
+  google-lib-common-options-processing
+  [[ -n "${RETRY_COUNT}" ]] || RETRY_COUNT=3
 
-  if [[ -z "${SKIP_AUTH_CHECK}" ]]; then
-    google-check-access
-  fi
 
-  if [[ -z "${NO_ACCOUNT_REPORT}" ]]; then
-    local ACTIVE_GCLOUD_ACCOUNT=$(gcloud config configurations list --filter='is_active=true' --format 'value(properties.core.account)')
-    echofmt "Using account '${ACTIVE_GCLOUD_ACCOUNT}'..."
-  fi
+  [[ -n "${ORGANIZATION_ID}" ]] || echoerrandexit 'Organization ID (--organization-id=xxxx) is required.'
 
-  if [[ -z "${PROJECT_ID:-}" ]]; then
-    if [[ -n "${NON_INTERACTIVE:-}" ]]; then
-      echoerrandexit "Cannot determine valid default for 'PROJECT_ID' when invoking google-project-create in non-interactive mode. A valid value must be provided prior to invocation."
-    else
-      get-answer "Name for the google project to create for intraweb?" PROJECT_ID 'intraweb'
-    fi
-  fi
-  if ! gcloud projects describe "${PROJECT_ID}" >/dev/null; then
+  echofmt "Testing if project '${PROJECT_ID}' already exists..."
+  if ! gcloud projects describe "${PROJECT_ID}" >/dev/null 2>&1; then
     [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
       || echoerrandexit "Project does not exist and 'create if necessary' option is not set while invoking google-projects-create in non-interactive mode."
     if [[ -n "${CREATE_IF_NECESSARY}" ]] \
         || yes-no "Project '${PROJECT_ID}' not found. Attempt to create?" 'Y'; then
-      gcloud projects create "${PROJECT_ID}"
-    fi
+      local FINAL_ERROR
+      google-projects-create-helper-command || { # if first attempt doesn't succeed, maybe we can retry?
+        [[ -z "${NO_RETRY_NAMES}" ]] && { # retry is allowed
+          local I=1
+          while (( ${I} <= ${RETRY_COUNT} )); do
+            echofmt "There seems to have been a problem; this may be because the global project ID is taken. Retrying ${I} of ${RETRY_COUNT}..."
+            { google-projects-create-helper-command &&  break; } || {
+              I=$(( ${I} + 1 ))
+              (( ${I} <= ${RETRY_COUNT} ))
+            }
+          done
+        } # retry allowed block
+      } || { # final; we're out of retries
+        echoerrandexit "Could not create project. Error message on last attempt was: $(<"${INTRAWEB_TMP_ERROR}")"
+      }
+    fi # CREATE_IF_NECESSARY
+  else # gcloud projects describe found something and the project exists
+    google-projects-create-helper-set-var
+    echofmt "Project '${PROJECT_ID}' already exists under organization ${ORGANIZATION_ID}."
   fi
-   # else the project already exists and there's nothing to do
+}
+
+# helper functions; these functions rely on the parent function variables and are not intended to be called directly by
+# anyone else
+
+google-projects-create-helper-set-var() {
+  [[ -z "${PROJECT_ID_OUTPUT_VAR}" ]] || eval "${PROJECT_ID_OUTPUT_VAR}='${EFFECTIVE_NAME}'"
+}
+
+google-projects-create-helper-command() {
+  local EFFECTIVE_NAME
+  if [[ -z "${I:-}" ]]; then # we are in the first go around
+    EFFECTIVE_NAME="${PROJECT_ID}"
+  else
+    # TODO: make the max string length 'GOOGLE_MAX_PROJECT_ID_LENGTH' or sometihng and load it
+    # for every failure, we try a longer random number
+    fill-rand --max-string-length 30 --max-number-length $(( 5 * ${I} )) --output-var EFFECTIVE_NAME "${PROJECT_ID}-"
+  fi
+  echofmt "Attempting to create project '${EFFECTIVE_NAME}'..."
+  # on success, will set PROJECT_ID_OUTPUT_VAR when appropriate; otherwise, exits with a failure code
+  gcloud projects create "${EFFECTIVE_NAME}" --organization="${ORGANIZATION_ID}" 2> "${INTRAWEB_TMP_ERROR}" && {
+    echofmt "Created project '${EFFECTIVE_NAME}' under organization ${ORGANIZATION_ID}"
+    google-projects-create-helper-set-var
+  }
+}
+google-projects-iap-oauth-setup() {
+  # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
+  eval "$(setSimpleOptions $(google-lib-common-options-spec) APPLICATION_TITLE:t= SUPPORT_EMAIL:e= -- "$@")"
+  google-lib-common-options-processing
+
+  local IAP_SERVICE='iap.googleapis.com'
+  local IAP_AVAILABLE
+  IAP_AVAILABLE=$(gcloud services list --project=${PROJECT_ID} \
+    --available \
+    --filter="name:${IAP_SERVICE}" \
+    --format='value(name)')
+  if [[ -z "${IAP_AVAILABLE}" ]]; then
+    echofmt "Service '${IAP_SERVICE}' already configure for project '${PROJECT_ID}'..."
+  else
+    gcloud services enable ${IAP_SERVICE} --project=${PROJECT_ID} \
+      && echofmt "IAP service enableled for project '${PROJECT_ID}'..." \
+      || echoerrandexit "Error enabling service. Refer to any error report above. Try again later or enable manually."
+  fi
+
+  # Check if OAuth brand is configured, and if not, attempt to configure it.
+  gcloud alpha iap oauth-brands list --project=${PROJECT_ID} --quiet >/dev/null >&2 \
+    && echofmt "IAP OAuth brands already configured..." \
+    || {
+      # Check if we have 'non-interactive' set and blow up if we don't have the data we need.
+      [[ -z "${NON_INTERACTIVE}" ]] \
+        || { [[ -n "${APPLICATION_TITLE}" ]] && [[ -n "${SUPPORT_EMAIL}" ]]; } \
+        || echoerrandexit "Must provide application title and support email when running in non-interactive mode."
+      # If the defaults are present, then it is considered answered and nothing happens.
+      require-answer 'Application title (for OAuth authentication)?' APPLICATION_TITLE "${APPLICATION_TITLE}"
+      require-answer 'Support email for for OAuth authentication problems?' SUPPORT_EMAIL "${SUPPORT_EMAIL}"
+      # Finally, all the data is gathered and we're ready to actually configure.
+      gcloud alpha iap oauth-brands create --application-title="${APPLICATION_TITLE}" --support-email="${SUPPORT_EMAIL}" \
+        && echofmt "IAP-OAuth brand identify configured for project '${PROJECT_ID}' with title '${APPLICATION_TITLE}' and support email '${SUPPORT_EMAIL}'..." \
+        || echoerrandexit "Error configuring OAuth brand identity. Refer to any errors above. Try again later or enable manually."
+    }
+}
+google-account-report() {
+  local ACTIVE_GCLOUD_ACCOUNT=$(gcloud config configurations list --filter='is_active=true' --format 'value(properties.core.account)')
+  echofmt "Using account '${ACTIVE_GCLOUD_ACCOUNT}'..."
 }
 google-check-access() {
   gcloud projects list > /dev/null ||
     echoerrandexit "\nIt does not appear we can access the Google Cloud. This may be due to stale or lack of  authentication tokens. See above for more information."
+}
+# These are common helper functions meant to be called by higher level functions utilizing the common options. They rely
+# on external varaiables.
+
+google-lib-common-options-spec() {
+  echo 'PROJECT_ID= NON_INTERACTIVE: NO_ACCOUNT_REPORT: SKIP_AUTH_CHECK:'
+}
+
+google-lib-common-options-processing() {
+  if [[ -z "${PROJECT_ID:-}" ]]; then
+    # TODO: allow project set from active config...
+    if [[ -n "${NON_INTERACTIVE:-}" ]]; then
+      echoerrandexit "Cannot determine valid default for 'PROJECT_ID' when invoking google-project-create in non-interactive mode. A valid value must be provided prior to invocation."
+    else
+      get-answer "Google project ID for new intraweb project?" PROJECT_ID "${PROJECT_ID:-}"
+    fi
+  fi
+
+  google-lib-common-options-check-access-and-report
+}
+
+google-lib-common-options-check-access-and-report() {
+  [[ -n "${SKIP_AUTH_CHECK:-}" ]] || {
+    google-check-access
+    [[ -n "${NO_ACCOUNT_REPORT:-}" ]] || google-account-report
+  }
+}
+fill-rand() {
+  eval "$(setSimpleOptions MAX_STRING_LENGTH:= MAX_NUMBER_LENGTH:= OUTPUT_VAR:= -- "$@")"
+  local BASE_STRING="${1}"
+  local NUMBER=""
+
+  while (( ${#NUMBER} < ${MAX_NUMBER_LENGTH} )) && (( ( ${#NUMBER} + ${#BASE_STRING} ) < ${MAX_STRING_LENGTH} )); do
+    NUMBER="${NUMBER}${RANDOM}"
+    NUMBER=${NUMBER:0:${MAX_NUMBER_LENGTH}}
+    if (( ( ${#NUMBER} + ${#BASE_STRING} ) > ${MAX_STRING_LENGTH} )); then
+      MAX_NUMBER_LENGTH=$(( ${MAX_STRING_LENGTH} - ${#BASE_STRING}))
+      NUMBER=${NUMBER:0:${MAX_NUMBER_LENGTH}}
+    fi
+  done
+
+  local CONCAT="${BASE_STRING}${NUMBER}"
+  if [[ -n "${OUTPUT_VAR}" ]]; then
+    eval "${OUTPUT_VAR}='${CONCAT}'"
+  else
+    echo "${CONCAT}"
+  fi
 }
 # but NOT ./sources; ./sources contains exported 'sourceable' functions
 
@@ -824,14 +963,38 @@ if [[ -f "${INTRAWEB_SETTINGS_FILE}" ]]; then
   source "${INTRAWEB_SETTINGS_FILE}"
 fi
 
-eval "$(setSimpleOptions --script ASSUME_DEFAULTS: PROJECT_ID= -- "$@")"
-
+eval "$(setSimpleOptions --script ASSUME_DEFAULTS: PROJECT_ID= ORGANIZATION_ID= APPLICATION_TITLE:t= SUPPORT_EMAIL:e= -- "$@")"
 ACTION="${1:-}"
 if [[ -z "${ACTION}" ]]; then
   usage-bad-action # will exit process
 fi
 
-[[ -z "${ASSUME_DEFAULTS:-}" ]] || echofmt "Running with default values..."
+intraweb-helper-verify-settings() {
+  local SETTING PROBLEMS
+
+  for SETTING in $INTRAWEB_SETTINGS; do
+    if [[ -z "${!SETTING:-}" ]]; then
+      echoerr "Did not find expected setting: '${SETTING}'."
+      PROBLEMS=true
+    fi
+    if [[ "${PROBLEMS}" == true ]]; then
+      echoerrandexit "At least one parameter is not set. Try:\n\nintraweb init"
+    fi
+  done
+}
+
+[[ "${ACTION}" == init ]] || intraweb-helper-verify-settings
+
+[[ -n "${ORGANIZATION_ID:-}" ]] || ORGANIZATION_ID="${INTRAWEB_DEFAULT_ORGANIZATION_ID}"
+if [[ -n "${ASSUME_DEFAULTS}" ]]; then
+  [[ -n "${PROJECT_ID:-}" ]] || PROJECT_ID="${INTRAWEB_PROJECT_PREFIX}-intraweb"
+
+  [[ -n "${APPLICATION_TITLE}" ]] || [[ -z "${INTRAWEB_COMPANY_NAME}" ]] || APPLICATION_TITLE="${INTRAWEB_COMPANY_NAME}"
+
+  [[ -n "${SUPPORT_EMAIL}" ]] || [[ -z "${INTRAWEB_OAUTH_SUPPORT_EMAIL}" ]] || SUPPORT_EMAIL="${INTRAWEB_OAUTH_SUPPORT_EMAIL}"
+
+  echofmt "Running with default values..."
+fi
 
 case "${ACTION}" in
   build|init|run|update-web)

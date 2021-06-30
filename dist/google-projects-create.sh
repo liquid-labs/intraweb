@@ -559,7 +559,7 @@ require-answer() {
   local DEFAULT="${3:-}"
 
   if [[ -n "$FORCE" ]] && [[ -z "$DEFAULT" ]]; then
-    DEFAULT="${!VAR}"
+    DEFAULT="${!VAR:-}"
   fi
 
   # TODO: support 'pass-through' options in 'setSimpleOptions'
@@ -666,7 +666,58 @@ gather-answers() {
   done
 }
 
+google-account-report() {
+  local ACTIVE_GCLOUD_ACCOUNT=$(gcloud config configurations list --filter='is_active=true' --format 'value(properties.core.account)')
+  echofmt "Using account '${ACTIVE_GCLOUD_ACCOUNT}'..."
+}
 google-check-access() {
   gcloud projects list > /dev/null ||
     echoerrandexit "\nIt does not appear we can access the Google Cloud. This may be due to stale or lack of  authentication tokens. See above for more information."
+}
+# These are common helper functions meant to be called by higher level functions utilizing the common options. They rely
+# on external varaiables.
+
+google-lib-common-options-spec() {
+  echo 'PROJECT_ID= NON_INTERACTIVE: NO_ACCOUNT_REPORT: SKIP_AUTH_CHECK:'
+}
+
+google-lib-common-options-processing() {
+  if [[ -z "${PROJECT_ID:-}" ]]; then
+    # TODO: allow project set from active config...
+    if [[ -n "${NON_INTERACTIVE:-}" ]]; then
+      echoerrandexit "Cannot determine valid default for 'PROJECT_ID' when invoking google-project-create in non-interactive mode. A valid value must be provided prior to invocation."
+    else
+      get-answer "Google project ID for new intraweb project?" PROJECT_ID "${PROJECT_ID:-}"
+    fi
+  fi
+
+  google-lib-common-options-check-access-and-report
+}
+
+google-lib-common-options-check-access-and-report() {
+  [[ -n "${SKIP_AUTH_CHECK:-}" ]] || {
+    google-check-access
+    [[ -n "${NO_ACCOUNT_REPORT:-}" ]] || google-account-report
+  }
+}
+fill-rand() {
+  eval "$(setSimpleOptions MAX_STRING_LENGTH:= MAX_NUMBER_LENGTH:= OUTPUT_VAR:= -- "$@")"
+  local BASE_STRING="${1}"
+  local NUMBER=""
+
+  while (( ${#NUMBER} < ${MAX_NUMBER_LENGTH} )) && (( ( ${#NUMBER} + ${#BASE_STRING} ) < ${MAX_STRING_LENGTH} )); do
+    NUMBER="${NUMBER}${RANDOM}"
+    NUMBER=${NUMBER:0:${MAX_NUMBER_LENGTH}}
+    if (( ( ${#NUMBER} + ${#BASE_STRING} ) > ${MAX_STRING_LENGTH} )); then
+      MAX_NUMBER_LENGTH=$(( ${MAX_STRING_LENGTH} - ${#BASE_STRING}))
+      NUMBER=${NUMBER:0:${MAX_NUMBER_LENGTH}}
+    fi
+  done
+
+  local CONCAT="${BASE_STRING}${NUMBER}"
+  if [[ -n "${OUTPUT_VAR}" ]]; then
+    eval "${OUTPUT_VAR}='${CONCAT}'"
+  else
+    echo "${CONCAT}"
+  fi
 }

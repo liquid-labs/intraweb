@@ -12,12 +12,13 @@ intraweb-init-lib-ensure-settings() {
 
   local INTRAWEB_DEFAULT_ORGANIZATION_ID_PROMPT='Default Organization ID—a number—to nest projects under?'
   local INTRAWEB_PROJECT_PREFIX_PROMPT='Default Google project prefix?'
+  local INTRAWEB_COMPANY_NAME_PROMPT='Default company name?'
+  local INTRAWEB_OAUTH_SUPPORT_EMAIL_PROMPT='Default OAuth authentication support email?'
 
   local SETTING PROMPT_VAR
   for SETTING in ${INTRAWEB_SETTINGS}; do
     PROMPT_VAR="${SETTING}_PROMPT"
-    [[ -n "${!PROMPT_VAR}" ]] || eval "${PROMPT_VAR}='${PROMPT_VAR}?'"
-    eval require-answer --force "'${!PROMPT_VAR}'" "${SETTING}" "'${!SETTING:-}'"
+    eval require-answer --force "'${!PROMPT_VAR:=${SETTING}?}'" "${SETTING}" "'${!SETTING:-}'"
   done
 
   intraweb-init-lib-update-settings
