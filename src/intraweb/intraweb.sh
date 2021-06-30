@@ -39,7 +39,8 @@ intraweb-helper-verify-settings() {
 if [[ -n "${ASSUME_DEFAULTS}" ]]; then
   [[ -n "${PROJECT_ID:-}" ]] || PROJECT_ID="${INTRAWEB_PROJECT_PREFIX}-intraweb"
 
-  [[ -n "${APPLICATION_TITLE}" ]] || [[ -z "${INTRAWEB_COMPANY_NAME}" ]] || APPLICATION_TITLE="${INTRAWEB_COMPANY_NAME}"
+  [[ -n "${APPLICATION_TITLE}" ]] || [[ -z "${INTRAWEB_COMPANY_NAME}" ]] \
+    || APPLICATION_TITLE="${INTRAWEB_COMPANY_NAME} Intraweb"
 
   [[ -n "${SUPPORT_EMAIL}" ]] || [[ -z "${INTRAWEB_OAUTH_SUPPORT_EMAIL}" ]] || SUPPORT_EMAIL="${INTRAWEB_OAUTH_SUPPORT_EMAIL}"
 
