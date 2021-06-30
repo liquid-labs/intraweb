@@ -13,6 +13,10 @@ OBJECTS = $(addprefix build/,$(addsuffix .o,$(FILES)))
 
 all: $(DIST_FILES)
 
+# we do this instead of 'rm -f $(DIST_FILES)' for safety
+clean:
+	rm -f dist/*
+
 dist/:
 	mkdir -p $(dir $@)
 
