@@ -13,7 +13,9 @@ if [[ -f "${INTRAWEB_SETTINGS_FILE}" ]]; then
   source "${INTRAWEB_SETTINGS_FILE}"
 fi
 
-eval "$(setSimpleOptions --script ASSUME_DEFAULTS: PROJECT_ID= -- "$@")"
+eval "$(setSimpleOptions --script ASSUME_DEFAULTS: PROJECT_ID= ORGANIZATION_ID= -- "$@")"
+
+[[ -n "${ORGANIZATION_ID}" ]] || ORGANIZATION_ID="${INTRAWEB_DEFAULT_ORGANIZATION_ID}"
 
 ACTION="${1:-}"
 if [[ -z "${ACTION}" ]]; then
