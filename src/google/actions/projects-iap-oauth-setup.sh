@@ -18,10 +18,10 @@ google-projects-iap-oauth-setup() {
   fi
 
   # Check if OAuth brand is configured, and if not, attempt to configure it.
-  local BRANDS_COUNT
-  BRANDS_COUNT=$(gcloud alpha iap oauth-brands list --project=${PROJECT_ID} --format='value(name)' 2>/dev/null | wc -l)
-  (( ${BRANDS_COUNT} > 0 )) \
-    && echofmt "IAP OAuth brands already configured..." \
+  local BRAND_NAME
+  BRAND_NAME=$(gcloud alpha iap oauth-brands list --project=${PROJECT_ID} --format='value(name)')
+  [[ -n ${BRAND_NAME} ]] \
+    && echofmt "IAP OAuth brand '${BRAND_NAME}' already configured..." \
     || {
       # Check if we have 'non-interactive' set and blow up if we don't have the data we need.
       [[ -z "${NON_INTERACTIVE}" ]] \
@@ -31,10 +31,24 @@ google-projects-iap-oauth-setup() {
       require-answer 'Application title (for OAuth authentication)?' APPLICATION_TITLE "${APPLICATION_TITLE}"
       require-answer 'Support email for for OAuth authentication problems?' SUPPORT_EMAIL "${SUPPORT_EMAIL}"
       # Finally, all the data is gathered and we're ready to actually configure.
-      gcloud alpha iap oauth-brands create --project=${PROJECT_ID} \
+      BRAND_NAME=$(gcloud alpha iap oauth-brands create --project=${PROJECT_ID} \
           --application_title="${APPLICATION_TITLE}" \
           --support_email="${SUPPORT_EMAIL}" \
+          --format='value(name)') \
         && echofmt "IAP-OAuth brand identify configured for project '${PROJECT_ID}' with title '${APPLICATION_TITLE}' and support email '${SUPPORT_EMAIL}'..." \
         || echoerrandexit "Error configuring OAuth brand identity. Refer to any errors above. Try again later or enable manually."
-    }
+    } # brand setup
+
+  # now we can setup the intraweb client
+  local OAUTH_CLIENT_NAME
+  OAUTH_CLIENT_NAME=$(gcloud alpha iap oauth-clients list "${BRAND_NAME}" --format 'value(name)') >/dev/null >&2 )
+  [[ -n "${OAUTH_CLIENT_NAME}" ]] \
+    && echofmt "OAuth client '${APPLICATION_TITLE}' already exists for brand '${BRAND_NAME}'..." \
+    || {
+      echofmt "Attempting to create new OAuth client..."
+      OAUTH_CLIENT_NAME=$(gcloud alpha iap oauth-clients create ${BRAND_NAME} \
+        --display_name "${APPLICATION_TITLE}" \
+        --project ${PROJECT_ID} \
+        --format 'value(name)')
+    } # oauth client setup
 }
