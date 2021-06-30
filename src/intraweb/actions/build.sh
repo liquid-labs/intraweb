@@ -13,9 +13,13 @@ intraweb-build() {
     CREATE_OPTS="${CREATE_OPTS} --project-id ${PROJECT_ID}"
     IAP_OPTS="${IAP_OPTS} --project-id ${PROJECT_ID}"
   fi
+  # no 'eval' necessary here; we don't expect any spaces (see note below in 'google-projects-iap-oauth-setup' call)
   google-projects-create ${CREATE_OPTS}
 
   [[ -z "${APPLICATION_TITLE}" ]] || IAP_OPTS="${IAP_OPTS} --application-title '${APPLICATION_TITLE}'"
   [[ -z "${SUPPORT_EMAIL}" ]] || IAP_OPTS="${IAP_OPTS} --support-email '${SUPPORT_EMAIL}'"
-  google-projects-iap-oauth-setup ${IAP_OPTS}
+  # without the eval, the '-quotes get read as literal, to the tokens end up being like:
+  # --application_title|'Foo|Bar'|--support_email|'foo@bar.com'
+  # as if the email literally began and ended with ticks and any title with spaces gets cut up.
+  eval google-projects-iap-oauth-setup ${IAP_OPTS}
 }
