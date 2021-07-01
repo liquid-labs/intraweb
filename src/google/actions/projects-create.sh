@@ -15,7 +15,8 @@ google-projects-create() {
     $(google-lib-common-create-options-spec) \
     -- "$@")"
   # set default and common processing
-  google-lib-common-core-options-processing
+  google-lib-ensure-project-id
+  google-lib-common-options-check-access-and-report
   google-lib-common-org-options-processing
   google-lib-common-create-options-processing
 

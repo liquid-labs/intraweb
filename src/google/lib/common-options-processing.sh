@@ -12,7 +12,7 @@ google-lib-common-options-check-access-and-report() {
   }
 }
 
-google-lib-common-core-options-processing() {
+google-lib-ensure-project-id() {
   if [[ -z "${PROJECT_ID:-}" ]]; then
     # TODO: allow project set from active config...
     if [[ -n "${NON_INTERACTIVE:-}" ]]; then
@@ -21,8 +21,6 @@ google-lib-common-core-options-processing() {
       get-answer "Google project ID for new intraweb project?" PROJECT_ID "${PROJECT_ID:-}"
     fi
   fi
-
-  google-lib-common-options-check-access-and-report
 }
 
 google-lib-common-org-options-spec() {
