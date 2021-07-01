@@ -13,7 +13,7 @@ if [[ -f "${INTRAWEB_SETTINGS_FILE}" ]]; then
   source "${INTRAWEB_SETTINGS_FILE}"
 fi
 
-eval "$(setSimpleOptions --script ASSUME_DEFAULTS: PROJECT_ID= ORGANIZATION_ID= APPLICATION_TITLE:t= SUPPORT_EMAIL:e= -- "$@")"
+eval "$(setSimpleOptions --script ASSUME_DEFAULTS: PROJECT_ID= INFER_PROJECT_ID: BUCKET_ID= ORGANIZATION_ID= APPLICATION_TITLE:t= SUPPORT_EMAIL:e= -- "$@")"
 ACTION="${1:-}"
 if [[ -z "${ACTION}" ]]; then
   usage-bad-action # will exit process
@@ -35,8 +35,15 @@ intraweb-helper-verify-settings() {
 
 [[ "${ACTION}" == init ]] || intraweb-helper-verify-settings
 
+if [[ -z "${PROJECT_ID}" ]] && [[ -n "${INFER_PROJECT_ID}" ]]; then
+  PROJECT_ID=$(gcloud config get-value project)
+  # note, PROJECT_ID may still be undefined, and that's OK
+  [[ -z "${PROJECT_ID}" ]] || echofmt "Inferred project ID '${PROJECT_ID}' from active gcloud conf."
+fi
+
 [[ -n "${ORGANIZATION_ID:-}" ]] || ORGANIZATION_ID="${INTRAWEB_DEFAULT_ORGANIZATION_ID}"
 if [[ -n "${ASSUME_DEFAULTS}" ]]; then
+  # is this a new project?
   [[ -n "${PROJECT_ID:-}" ]] || PROJECT_ID="${INTRAWEB_PROJECT_PREFIX}-intraweb"
 
   [[ -n "${APPLICATION_TITLE}" ]] || [[ -z "${INTRAWEB_COMPANY_NAME}" ]] \
