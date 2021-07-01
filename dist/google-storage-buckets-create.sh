@@ -735,57 +735,86 @@ fill-rand() {
     echo "${CONCAT}"
   fi
 }
-google-projects-iap-oauth-setup() {
-  # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
-  eval "$(setSimpleOptions $(google-lib-common-core-options-spec) APPLICATION_TITLE:t= SUPPORT_EMAIL:e= -- "$@")"
-  google-lib-ensure-project-id
+# TODO: we have older gcloud code... somewhere that handles some of this stuff. Like, maybe dealing with the project 'name'
 
-  local IAP_SERVICE='iap.googleapis.com'
-  local IAP_STATE
-  IAP_STATE=$(gcloud services list --project=${PROJECT_ID} \
-    --available \
-    --filter="name:${IAP_SERVICE}" \
-    --format='value(name)')
-  if [[ "${IAP_STATE}" == 'ENABLED' ]]; then
-    echofmt "Service '${IAP_SERVICE}' already enabled for project '${PROJECT_ID}'."
-  else
-    gcloud services enable ${IAP_SERVICE} --project=${PROJECT_ID} \
-      && echofmt "IAP service enableled for project '${PROJECT_ID}'..." \
-      || echoerrandexit "Error enabling service. Refer to any error report above. Try again later or enable manually."
+# Utility to robustly create a new Google storage bucket. Since storage buckets IDs are (bizarely) both global /and/ entirely
+# unreserved, there is often contention for storage bucket names and by default the utility will attempt to append random
+# numbers in order to locate a free name.
+#
+# --no-retry-names : if storage bucket creation fails possibly because of name collision, then the utility will fail
+#   immediately rather than append random number and retry
+# --non-interactive : causes flows that would otherwise result in a user prompt to instead halt with an error
+google-storage-buckets-create() {
+  # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
+  eval "$(setSimpleOptions \
+    $(google-lib-common-core-options-spec) \
+    $(google-lib-common-create-options-spec) \
+    BUCKET_ID= \
+    -- "$@")"
+  # set default and common processing
+  google-lib-ensure-project-id
+  google-lib-common-options-check-access-and-report
+  google-lib-common-create-options-processing
+
+  local TARGET_OPTS=''
+  [[ -z "${PROJECT_ID}" ]] || TARGET_OPTS="-p ${PROJECT_ID}"
+
+  if [[ -z "${BUCKET_ID}" ]]; then
+    [[ -z "${NON_INTERACTIVE}" ]] \
+      || echoerrandexit "Bucket ID not specified while invoking google-storage-buckets in non-interactive mode."
+    require-answer 'Bucket ID to create?' BUCKET_ID
   fi
 
-  # Check if OAuth brand is configured, and if not, attempt to configure it.
-  local BRAND_NAME
-  BRAND_NAME=$(gcloud alpha iap oauth-brands list --project=${PROJECT_ID} --format='value(name)')
-  [[ -n ${BRAND_NAME} ]] \
-    && echofmt "IAP OAuth brand '${BRAND_NAME}' already configured..." \
-    || {
-      # Check if we have 'non-interactive' set and blow up if we don't have the data we need.
-      [[ -z "${NON_INTERACTIVE}" ]] \
-        || { [[ -n "${APPLICATION_TITLE}" ]] && [[ -n "${SUPPORT_EMAIL}" ]]; } \
-        || echoerrandexit "Must provide application title and support email when running in non-interactive mode."
-      # If the defaults are present, then it is considered answered and nothing happens.
-      require-answer 'Application title (for OAuth authentication)?' APPLICATION_TITLE "${APPLICATION_TITLE}"
-      require-answer 'Support email for for OAuth authentication problems?' SUPPORT_EMAIL "${SUPPORT_EMAIL}"
-      # Finally, all the data is gathered and we're ready to actually configure.
-      BRAND_NAME=$(gcloud alpha iap oauth-brands create --project=${PROJECT_ID} \
-          --application_title="${APPLICATION_TITLE}" \
-          --support_email="${SUPPORT_EMAIL}" \
-          --format='value(name)') \
-        && echofmt "IAP-OAuth brand identify configured for project '${PROJECT_ID}' with title '${APPLICATION_TITLE}' and support email '${SUPPORT_EMAIL}'..." \
-        || echoerrandexit "Error configuring OAuth brand identity. Refer to any errors above. Try again later or enable manually."
-    } # brand setup
+  echofmt "Testing if storage bucket '${BUCKET_ID}' already exists..."
+  if ! gsutil ls ${TARGET_OPTS} gs://${BUCKET_ID} >/dev/null 2>&1; then
+    [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
+      || echoerrandexit "Bucket does not exist and 'create if necessary' option is not set while invoking google-storage-buckets-create in non-interactive mode."
+    if [[ -n "${CREATE_IF_NECESSARY}" ]] \
+        || yes-no "Storage bucket '${BUCKET_ID}' not found. Attempt to create?" 'Y'; then
+      local FINAL_ERROR
+      google-storage-buckets-create-helper-command || { # if first attempt doesn't succeed, maybe we can retry?
+        [[ -z "${NO_RETRY_NAMES}" ]] && { # retry is allowed
+          local I=1
+          while (( ${I} <= ${RETRY_COUNT} )); do
+            echofmt "There seems to have been a problem; this may be because the global storage bucket ID is taken. Retrying ${I} of ${RETRY_COUNT}..."
+            { google-storage-buckets-create-helper-command &&  break; } || {
+              I=$(( ${I} + 1 ))
+              (( ${I} <= ${RETRY_COUNT} ))
+            }
+          done
+        } # retry allowed block
+      } || { # final; we're out of retries
+        echoerrandexit "Could not create storage bucket. Error message on last attempt was: $(<"${INTRAWEB_TMP_ERROR}")"
+      }
+    fi # CREATE_IF_NECESSARY
+  else # gcloud projects describe found something and the storage bucket exists
+    google-storage-buckets-create-helper-set-var
+    echofmt "Bucket '${BUCKET_ID}' already exists."
+  fi
+}
 
-  # now we can setup the intraweb client
-  local OAUTH_CLIENT_NAME
-  OAUTH_CLIENT_NAME=$(gcloud alpha iap oauth-clients list "${BRAND_NAME}" --format 'value(name)')
-  [[ -n "${OAUTH_CLIENT_NAME}" ]] \
-    && echofmt "OAuth client '${APPLICATION_TITLE}' already exists for brand '${BRAND_NAME}'..." \
-    || {
-      echofmt "Attempting to create new OAuth client..."
-      OAUTH_CLIENT_NAME=$(gcloud alpha iap oauth-clients create ${BRAND_NAME} \
-        --display_name "${APPLICATION_TITLE}" \
-        --project ${PROJECT_ID} \
-        --format 'value(name)')
-    } # oauth client setup
+# helper functions; these functions rely on the parent function variables and are not intended to be called directly by
+# anyone else
+
+google-storage-buckets-create-helper-set-var() {
+  [[ -z "${ID_OUTPUT_VAR}" ]] || eval "${ID_OUTPUT_VAR}='${EFFECTIVE_NAME}'"
+}
+
+google-storage-buckets-create-helper-command() {
+  local EFFECTIVE_NAME
+  if [[ -z "${I:-}" ]]; then # we are in the first go around
+    rm "${INTRAWEB_TMP_ERROR}"
+    EFFECTIVE_NAME="${BUCKET_ID}"
+  else
+    # TODO: make the max string length 'GOOGLE_MAX_PROJECT_ID_LENGTH' or sometihng and load it
+    # for every failure, we try a longer random number
+    fill-rand --max-string-length 30 --max-number-length $(( 5 * ${I} )) --output-var EFFECTIVE_NAME "${BUCKET_ID}-"
+  fi
+  echofmt "Attempting to create storage bucket '${EFFECTIVE_NAME}'..."
+  # on success, will set ID_OUTPUT_VAR when appropriate; otherwise, exits with a failure code
+  echo gsutil mb ${TARGET_OPTS} gs://${EFFECTIVE_NAME} # DEBUG
+  gsutil mb ${TARGET_OPTS} gs://${EFFECTIVE_NAME} 2> "${INTRAWEB_TMP_ERROR}" && {
+    echofmt "Created storage bucket '${EFFECTIVE_NAME}'."
+    google-storage-buckets-create-helper-set-var
+  }
 }

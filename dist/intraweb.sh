@@ -724,25 +724,32 @@ intraweb-build() {
   google-lib-common-options-check-access-and-report
   # and now we can skip the auth check for the individual steps
   local COMMON_OPTS="--skip-auth-check"
-  local CREATE_OPTS="${COMMON_OPTS} --organization-id ${ORGANIZATION_ID}"
+  local PROJECT_CREATE_OPTS="${COMMON_OPTS} --organization-id ${ORGANIZATION_ID}"
   local IAP_OPTS="${COMMON_OPTS}"
-  if [[ -n "${ASSUME_DEFAULTS:-}" ]]; then
-    CREATE_OPTS="${CREATE_OPTS} --non-interactive --create-if-necessary"
-    IAP_OPTS="${IAP_OPTS} --non-interactive"
-  fi
+  local BUCKET_CREATE_OPTS="${COMMON_OPTS}"
   if [[ -n "${PROJECT_ID:-}" ]]; then
-    CREATE_OPTS="${CREATE_OPTS} --project-id ${PROJECT_ID}"
+    PROJECT_CREATE_OPTS="${PROJECT_CREATE_OPTS} --project-id ${PROJECT_ID}"
     IAP_OPTS="${IAP_OPTS} --project-id ${PROJECT_ID}"
+    BUCKET_CREATE_OPTS="${BUCKET_CREATE_OPTS} --project-id ${PROJECT_ID}"
   fi
-  # no 'eval' necessary here; we don't expect any spaces (see note below in 'google-projects-iap-oauth-setup' call)
-  google-projects-create ${CREATE_OPTS}
-
+  if [[ -n "${ASSUME_DEFAULTS:-}" ]]; then
+    PROJECT_CREATE_OPTS="${PROJECT_CREATE_OPTS} --non-interactive --create-if-necessary"
+    IAP_OPTS="${IAP_OPTS} --non-interactive"
+    BUCKET_CREATE_OPTS="${BUCKET_CREATE_OPTS} --non-interactive --create-if-necessary"
+    [[ -n "${BUCKET_ID}" ]] || [[ -z "${PROJECT_ID}" ]] \
+      || BUCKET_CREATE_OPTS="${BUCKET_CREATE_OPTS} --bucket-id ${PROJECT_ID}"
+  fi
   [[ -z "${APPLICATION_TITLE}" ]] || IAP_OPTS="${IAP_OPTS} --application-title '${APPLICATION_TITLE}'"
   [[ -z "${SUPPORT_EMAIL}" ]] || IAP_OPTS="${IAP_OPTS} --support-email '${SUPPORT_EMAIL}'"
+
+  # no 'eval' necessary here; we don't expect any spaces (see note below in 'google-projects-iap-oauth-setup' call)
+  google-projects-create ${PROJECT_CREATE_OPTS}
+
   # without the eval, the '-quotes get read as literal, to the tokens end up being like:
   # --application_title|'Foo|Bar'|--support_email|'foo@bar.com'
   # as if the email literally began and ended with ticks and any title with spaces gets cut up.
   eval google-projects-iap-oauth-setup ${IAP_OPTS}
+  google-storage-buckets-create ${BUCKET_CREATE_OPTS}
 }
 intraweb-init() {
   local DIR
@@ -808,16 +815,25 @@ usage-bad-action() {
 }
 # TODO: we have older gcloud code... somewhere that handles some of this stuff. Like, maybe dealing with the project 'name'
 
+# Utility to robustly create a new Google project. Since projects IDs are (bizarely) both global /and/ entirely
+# unreserved, there is often contention for project names and by default the utility will attempt to append random
+# numbers in order to locate a free name.
+#
+# --no-retry-names : if project creation fails possibly because of name collision, then the utility will fail
+#   immediately rather than append random number and retry
 # --non-interactive : causes flows that would otherwise result in a user prompt to instead halt with an error
 google-projects-create() {
   # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
-  eval "$(setSimpleOptions $(google-lib-common-options-spec) ORGANIZATION_ID= CREATE_IF_NECESSARY NO_RETRY_NAMES: RETRY_COUNT:= PROJECT_ID_OUTPUT_VAR -- "$@")"
+  eval "$(setSimpleOptions \
+    $(google-lib-common-core-options-spec) \
+    $(google-lib-common-org-options-spec) \
+    $(google-lib-common-create-options-spec) \
+    -- "$@")"
   # set default and common processing
-  google-lib-common-options-processing
-  [[ -n "${RETRY_COUNT}" ]] || RETRY_COUNT=3
-
-
-  [[ -n "${ORGANIZATION_ID}" ]] || echoerrandexit 'Organization ID (--organization-id=xxxx) is required.'
+  google-lib-ensure-project-id
+  google-lib-common-options-check-access-and-report
+  google-lib-common-org-options-processing
+  google-lib-common-create-options-processing
 
   echofmt "Testing if project '${PROJECT_ID}' already exists..."
   if ! gcloud projects describe "${PROJECT_ID}" >/dev/null 2>&1; then
@@ -851,12 +867,13 @@ google-projects-create() {
 # anyone else
 
 google-projects-create-helper-set-var() {
-  [[ -z "${PROJECT_ID_OUTPUT_VAR}" ]] || eval "${PROJECT_ID_OUTPUT_VAR}='${EFFECTIVE_NAME}'"
+  [[ -z "${ID_OUTPUT_VAR}" ]] || eval "${ID_OUTPUT_VAR}='${EFFECTIVE_NAME}'"
 }
 
 google-projects-create-helper-command() {
   local EFFECTIVE_NAME
   if [[ -z "${I:-}" ]]; then # we are in the first go around
+    rm "${INTRAWEB_TMP_ERROR}"
     EFFECTIVE_NAME="${PROJECT_ID}"
   else
     # TODO: make the max string length 'GOOGLE_MAX_PROJECT_ID_LENGTH' or sometihng and load it
@@ -864,7 +881,7 @@ google-projects-create-helper-command() {
     fill-rand --max-string-length 30 --max-number-length $(( 5 * ${I} )) --output-var EFFECTIVE_NAME "${PROJECT_ID}-"
   fi
   echofmt "Attempting to create project '${EFFECTIVE_NAME}'..."
-  # on success, will set PROJECT_ID_OUTPUT_VAR when appropriate; otherwise, exits with a failure code
+  # on success, will set ID_OUTPUT_VAR when appropriate; otherwise, exits with a failure code
   gcloud projects create "${EFFECTIVE_NAME}" --organization="${ORGANIZATION_ID}" 2> "${INTRAWEB_TMP_ERROR}" && {
     echofmt "Created project '${EFFECTIVE_NAME}' under organization ${ORGANIZATION_ID}"
     google-projects-create-helper-set-var
@@ -872,8 +889,8 @@ google-projects-create-helper-command() {
 }
 google-projects-iap-oauth-setup() {
   # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
-  eval "$(setSimpleOptions $(google-lib-common-options-spec) APPLICATION_TITLE:t= SUPPORT_EMAIL:e= -- "$@")"
-  google-lib-common-options-processing
+  eval "$(setSimpleOptions $(google-lib-common-core-options-spec) APPLICATION_TITLE:t= SUPPORT_EMAIL:e= -- "$@")"
+  google-lib-ensure-project-id
 
   local IAP_SERVICE='iap.googleapis.com'
   local IAP_STATE
@@ -909,17 +926,103 @@ google-projects-iap-oauth-setup() {
           --format='value(name)') \
         && echofmt "IAP-OAuth brand identify configured for project '${PROJECT_ID}' with title '${APPLICATION_TITLE}' and support email '${SUPPORT_EMAIL}'..." \
         || echoerrandexit "Error configuring OAuth brand identity. Refer to any errors above. Try again later or enable manually."
-    }
+    } # brand setup
 
-    # now we can setup the intraweb client
-    gcloud alpha iap oauth-clients describe "${APPLICATION_TITLE}" \
-        --brand "${BRAND_NAME}" \
-        --project ${PROJECT_ID} >/dev/null >&2 \
-      && echofmt "OAuth client '${APPLICATION_TITLE}' already exists for brand '${BRAND_NAME}'..." \
-      || {
-        echofmt "Attempting to create new OAuth client..."
-        gcloud alpha iap oauth-clients create ${BRAND_NAME} --display_name "${APPLICATION_TITLE}"
+  # now we can setup the intraweb client
+  local OAUTH_CLIENT_NAME
+  OAUTH_CLIENT_NAME=$(gcloud alpha iap oauth-clients list "${BRAND_NAME}" --format 'value(name)')
+  [[ -n "${OAUTH_CLIENT_NAME}" ]] \
+    && echofmt "OAuth client '${APPLICATION_TITLE}' already exists for brand '${BRAND_NAME}'..." \
+    || {
+      echofmt "Attempting to create new OAuth client..."
+      OAUTH_CLIENT_NAME=$(gcloud alpha iap oauth-clients create ${BRAND_NAME} \
+        --display_name "${APPLICATION_TITLE}" \
+        --project ${PROJECT_ID} \
+        --format 'value(name)')
+    } # oauth client setup
+}
+# TODO: we have older gcloud code... somewhere that handles some of this stuff. Like, maybe dealing with the project 'name'
+
+# Utility to robustly create a new Google storage bucket. Since storage buckets IDs are (bizarely) both global /and/ entirely
+# unreserved, there is often contention for storage bucket names and by default the utility will attempt to append random
+# numbers in order to locate a free name.
+#
+# --no-retry-names : if storage bucket creation fails possibly because of name collision, then the utility will fail
+#   immediately rather than append random number and retry
+# --non-interactive : causes flows that would otherwise result in a user prompt to instead halt with an error
+google-storage-buckets-create() {
+  # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
+  eval "$(setSimpleOptions \
+    $(google-lib-common-core-options-spec) \
+    $(google-lib-common-create-options-spec) \
+    BUCKET_ID= \
+    -- "$@")"
+  # set default and common processing
+  google-lib-ensure-project-id
+  google-lib-common-options-check-access-and-report
+  google-lib-common-create-options-processing
+
+  local TARGET_OPTS=''
+  [[ -z "${PROJECT_ID}" ]] || TARGET_OPTS="-p ${PROJECT_ID}"
+
+  if [[ -z "${BUCKET_ID}" ]]; then
+    [[ -z "${NON_INTERACTIVE}" ]] \
+      || echoerrandexit "Bucket ID not specified while invoking google-storage-buckets in non-interactive mode."
+    require-answer 'Bucket ID to create?' BUCKET_ID
+  fi
+
+  echofmt "Testing if storage bucket '${BUCKET_ID}' already exists..."
+  if ! gsutil ls ${TARGET_OPTS} gs://${BUCKET_ID} >/dev/null 2>&1; then
+    [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
+      || echoerrandexit "Bucket does not exist and 'create if necessary' option is not set while invoking google-storage-buckets-create in non-interactive mode."
+    if [[ -n "${CREATE_IF_NECESSARY}" ]] \
+        || yes-no "Storage bucket '${BUCKET_ID}' not found. Attempt to create?" 'Y'; then
+      local FINAL_ERROR
+      google-storage-buckets-create-helper-command || { # if first attempt doesn't succeed, maybe we can retry?
+        [[ -z "${NO_RETRY_NAMES}" ]] && { # retry is allowed
+          local I=1
+          while (( ${I} <= ${RETRY_COUNT} )); do
+            echofmt "There seems to have been a problem; this may be because the global storage bucket ID is taken. Retrying ${I} of ${RETRY_COUNT}..."
+            { google-storage-buckets-create-helper-command &&  break; } || {
+              I=$(( ${I} + 1 ))
+              (( ${I} <= ${RETRY_COUNT} ))
+            }
+          done
+        } # retry allowed block
+      } || { # final; we're out of retries
+        echoerrandexit "Could not create storage bucket. Error message on last attempt was: $(<"${INTRAWEB_TMP_ERROR}")"
       }
+    fi # CREATE_IF_NECESSARY
+  else # gcloud projects describe found something and the storage bucket exists
+    google-storage-buckets-create-helper-set-var
+    echofmt "Bucket '${BUCKET_ID}' already exists."
+  fi
+}
+
+# helper functions; these functions rely on the parent function variables and are not intended to be called directly by
+# anyone else
+
+google-storage-buckets-create-helper-set-var() {
+  [[ -z "${ID_OUTPUT_VAR}" ]] || eval "${ID_OUTPUT_VAR}='${EFFECTIVE_NAME}'"
+}
+
+google-storage-buckets-create-helper-command() {
+  local EFFECTIVE_NAME
+  if [[ -z "${I:-}" ]]; then # we are in the first go around
+    rm "${INTRAWEB_TMP_ERROR}"
+    EFFECTIVE_NAME="${BUCKET_ID}"
+  else
+    # TODO: make the max string length 'GOOGLE_MAX_PROJECT_ID_LENGTH' or sometihng and load it
+    # for every failure, we try a longer random number
+    fill-rand --max-string-length 30 --max-number-length $(( 5 * ${I} )) --output-var EFFECTIVE_NAME "${BUCKET_ID}-"
+  fi
+  echofmt "Attempting to create storage bucket '${EFFECTIVE_NAME}'..."
+  # on success, will set ID_OUTPUT_VAR when appropriate; otherwise, exits with a failure code
+  echo gsutil mb ${TARGET_OPTS} gs://${EFFECTIVE_NAME} # DEBUG
+  gsutil mb ${TARGET_OPTS} gs://${EFFECTIVE_NAME} 2> "${INTRAWEB_TMP_ERROR}" && {
+    echofmt "Created storage bucket '${EFFECTIVE_NAME}'."
+    google-storage-buckets-create-helper-set-var
+  }
 }
 google-account-report() {
   local ACTIVE_GCLOUD_ACCOUNT=$(gcloud config configurations list --filter='is_active=true' --format 'value(properties.core.account)')
@@ -932,11 +1035,18 @@ google-check-access() {
 # These are common helper functions meant to be called by higher level functions utilizing the common options. They rely
 # on external varaiables.
 
-google-lib-common-options-spec() {
+google-lib-common-core-options-spec() {
   echo 'PROJECT_ID= NON_INTERACTIVE: NO_ACCOUNT_REPORT: SKIP_AUTH_CHECK:'
 }
 
-google-lib-common-options-processing() {
+google-lib-common-options-check-access-and-report() {
+  [[ -n "${SKIP_AUTH_CHECK:-}" ]] || {
+    google-check-access
+    [[ -n "${NO_ACCOUNT_REPORT:-}" ]] || google-account-report
+  }
+}
+
+google-lib-ensure-project-id() {
   if [[ -z "${PROJECT_ID:-}" ]]; then
     # TODO: allow project set from active config...
     if [[ -n "${NON_INTERACTIVE:-}" ]]; then
@@ -945,15 +1055,22 @@ google-lib-common-options-processing() {
       get-answer "Google project ID for new intraweb project?" PROJECT_ID "${PROJECT_ID:-}"
     fi
   fi
-
-  google-lib-common-options-check-access-and-report
 }
 
-google-lib-common-options-check-access-and-report() {
-  [[ -n "${SKIP_AUTH_CHECK:-}" ]] || {
-    google-check-access
-    [[ -n "${NO_ACCOUNT_REPORT:-}" ]] || google-account-report
-  }
+google-lib-common-org-options-spec() {
+  echo 'ORGANIZATION_ID='
+}
+
+google-lib-common-org-options-processing() {
+  [[ -n "${ORGANIZATION_ID}" ]] || echoerrandexit 'Organization ID (--organization-id=xxxx) is required.'
+}
+
+google-lib-common-create-options-spec() {
+  echo 'CREATE_IF_NECESSARY NO_RETRY_NAMES: RETRY_COUNT:= ID_OUTPUT_VAR'
+}
+
+google-lib-common-create-options-processing() {
+  [[ -n "${RETRY_COUNT}" ]] || RETRY_COUNT=3
 }
 fill-rand() {
   eval "$(setSimpleOptions MAX_STRING_LENGTH:= MAX_NUMBER_LENGTH:= OUTPUT_VAR:= -- "$@")"
@@ -982,7 +1099,7 @@ if [[ -f "${INTRAWEB_SETTINGS_FILE}" ]]; then
   source "${INTRAWEB_SETTINGS_FILE}"
 fi
 
-eval "$(setSimpleOptions --script ASSUME_DEFAULTS: PROJECT_ID= ORGANIZATION_ID= APPLICATION_TITLE:t= SUPPORT_EMAIL:e= -- "$@")"
+eval "$(setSimpleOptions --script ASSUME_DEFAULTS: PROJECT_ID= INFER_PROJECT_ID: BUCKET_ID= ORGANIZATION_ID= APPLICATION_TITLE:t= SUPPORT_EMAIL:e= -- "$@")"
 ACTION="${1:-}"
 if [[ -z "${ACTION}" ]]; then
   usage-bad-action # will exit process
@@ -1004,8 +1121,15 @@ intraweb-helper-verify-settings() {
 
 [[ "${ACTION}" == init ]] || intraweb-helper-verify-settings
 
+if [[ -z "${PROJECT_ID}" ]] && [[ -n "${INFER_PROJECT_ID}" ]]; then
+  PROJECT_ID=$(gcloud config get-value project)
+  # note, PROJECT_ID may still be undefined, and that's OK
+  [[ -z "${PROJECT_ID}" ]] || echofmt "Inferred project ID '${PROJECT_ID}' from active gcloud conf."
+fi
+
 [[ -n "${ORGANIZATION_ID:-}" ]] || ORGANIZATION_ID="${INTRAWEB_DEFAULT_ORGANIZATION_ID}"
 if [[ -n "${ASSUME_DEFAULTS}" ]]; then
+  # is this a new project?
   [[ -n "${PROJECT_ID:-}" ]] || PROJECT_ID="${INTRAWEB_PROJECT_PREFIX}-intraweb"
 
   [[ -n "${APPLICATION_TITLE}" ]] || [[ -z "${INTRAWEB_COMPANY_NAME}" ]] \

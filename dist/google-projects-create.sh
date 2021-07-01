@@ -677,11 +677,18 @@ google-check-access() {
 # These are common helper functions meant to be called by higher level functions utilizing the common options. They rely
 # on external varaiables.
 
-google-lib-common-options-spec() {
+google-lib-common-core-options-spec() {
   echo 'PROJECT_ID= NON_INTERACTIVE: NO_ACCOUNT_REPORT: SKIP_AUTH_CHECK:'
 }
 
-google-lib-common-options-processing() {
+google-lib-common-options-check-access-and-report() {
+  [[ -n "${SKIP_AUTH_CHECK:-}" ]] || {
+    google-check-access
+    [[ -n "${NO_ACCOUNT_REPORT:-}" ]] || google-account-report
+  }
+}
+
+google-lib-ensure-project-id() {
   if [[ -z "${PROJECT_ID:-}" ]]; then
     # TODO: allow project set from active config...
     if [[ -n "${NON_INTERACTIVE:-}" ]]; then
@@ -690,15 +697,22 @@ google-lib-common-options-processing() {
       get-answer "Google project ID for new intraweb project?" PROJECT_ID "${PROJECT_ID:-}"
     fi
   fi
-
-  google-lib-common-options-check-access-and-report
 }
 
-google-lib-common-options-check-access-and-report() {
-  [[ -n "${SKIP_AUTH_CHECK:-}" ]] || {
-    google-check-access
-    [[ -n "${NO_ACCOUNT_REPORT:-}" ]] || google-account-report
-  }
+google-lib-common-org-options-spec() {
+  echo 'ORGANIZATION_ID='
+}
+
+google-lib-common-org-options-processing() {
+  [[ -n "${ORGANIZATION_ID}" ]] || echoerrandexit 'Organization ID (--organization-id=xxxx) is required.'
+}
+
+google-lib-common-create-options-spec() {
+  echo 'CREATE_IF_NECESSARY NO_RETRY_NAMES: RETRY_COUNT:= ID_OUTPUT_VAR'
+}
+
+google-lib-common-create-options-processing() {
+  [[ -n "${RETRY_COUNT}" ]] || RETRY_COUNT=3
 }
 fill-rand() {
   eval "$(setSimpleOptions MAX_STRING_LENGTH:= MAX_NUMBER_LENGTH:= OUTPUT_VAR:= -- "$@")"
@@ -723,16 +737,25 @@ fill-rand() {
 }
 # TODO: we have older gcloud code... somewhere that handles some of this stuff. Like, maybe dealing with the project 'name'
 
+# Utility to robustly create a new Google project. Since projects IDs are (bizarely) both global /and/ entirely
+# unreserved, there is often contention for project names and by default the utility will attempt to append random
+# numbers in order to locate a free name.
+#
+# --no-retry-names : if project creation fails possibly because of name collision, then the utility will fail
+#   immediately rather than append random number and retry
 # --non-interactive : causes flows that would otherwise result in a user prompt to instead halt with an error
 google-projects-create() {
   # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
-  eval "$(setSimpleOptions $(google-lib-common-options-spec) ORGANIZATION_ID= CREATE_IF_NECESSARY NO_RETRY_NAMES: RETRY_COUNT:= PROJECT_ID_OUTPUT_VAR -- "$@")"
+  eval "$(setSimpleOptions \
+    $(google-lib-common-core-options-spec) \
+    $(google-lib-common-org-options-spec) \
+    $(google-lib-common-create-options-spec) \
+    -- "$@")"
   # set default and common processing
-  google-lib-common-options-processing
-  [[ -n "${RETRY_COUNT}" ]] || RETRY_COUNT=3
-
-
-  [[ -n "${ORGANIZATION_ID}" ]] || echoerrandexit 'Organization ID (--organization-id=xxxx) is required.'
+  google-lib-ensure-project-id
+  google-lib-common-options-check-access-and-report
+  google-lib-common-org-options-processing
+  google-lib-common-create-options-processing
 
   echofmt "Testing if project '${PROJECT_ID}' already exists..."
   if ! gcloud projects describe "${PROJECT_ID}" >/dev/null 2>&1; then
@@ -766,12 +789,13 @@ google-projects-create() {
 # anyone else
 
 google-projects-create-helper-set-var() {
-  [[ -z "${PROJECT_ID_OUTPUT_VAR}" ]] || eval "${PROJECT_ID_OUTPUT_VAR}='${EFFECTIVE_NAME}'"
+  [[ -z "${ID_OUTPUT_VAR}" ]] || eval "${ID_OUTPUT_VAR}='${EFFECTIVE_NAME}'"
 }
 
 google-projects-create-helper-command() {
   local EFFECTIVE_NAME
   if [[ -z "${I:-}" ]]; then # we are in the first go around
+    rm "${INTRAWEB_TMP_ERROR}"
     EFFECTIVE_NAME="${PROJECT_ID}"
   else
     # TODO: make the max string length 'GOOGLE_MAX_PROJECT_ID_LENGTH' or sometihng and load it
@@ -779,7 +803,7 @@ google-projects-create-helper-command() {
     fill-rand --max-string-length 30 --max-number-length $(( 5 * ${I} )) --output-var EFFECTIVE_NAME "${PROJECT_ID}-"
   fi
   echofmt "Attempting to create project '${EFFECTIVE_NAME}'..."
-  # on success, will set PROJECT_ID_OUTPUT_VAR when appropriate; otherwise, exits with a failure code
+  # on success, will set ID_OUTPUT_VAR when appropriate; otherwise, exits with a failure code
   gcloud projects create "${EFFECTIVE_NAME}" --organization="${ORGANIZATION_ID}" 2> "${INTRAWEB_TMP_ERROR}" && {
     echofmt "Created project '${EFFECTIVE_NAME}' under organization ${ORGANIZATION_ID}"
     google-projects-create-helper-set-var
