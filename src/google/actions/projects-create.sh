@@ -1,15 +1,23 @@
 # TODO: we have older gcloud code... somewhere that handles some of this stuff. Like, maybe dealing with the project 'name'
 
+# Utility to robustly create a new Google project. Since projects IDs are (bizarely) both global /and/ entirely
+# unreserved, there is often contention for project names and by default the utility will attempt to append random
+# numbers in order to locate a free name.
+#
+# --no-retry-names : if project creation fails possibly because of name collision, then the utility will fail
+#   immediately rather than append random number and retry
 # --non-interactive : causes flows that would otherwise result in a user prompt to instead halt with an error
 google-projects-create() {
   # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
-  eval "$(setSimpleOptions $(google-lib-common-options-spec) ORGANIZATION_ID= CREATE_IF_NECESSARY NO_RETRY_NAMES: RETRY_COUNT:= PROJECT_ID_OUTPUT_VAR -- "$@")"
+  eval "$(setSimpleOptions \
+    $(google-lib-common-core-options-spec) \
+    $(google-lib-common-org-options-spec) \
+    $(google-lib-common-create-options-spec) \
+    -- "$@")"
   # set default and common processing
-  google-lib-common-options-processing
-  [[ -n "${RETRY_COUNT}" ]] || RETRY_COUNT=3
-
-
-  [[ -n "${ORGANIZATION_ID}" ]] || echoerrandexit 'Organization ID (--organization-id=xxxx) is required.'
+  google-lib-common-core-options-processing
+  google-lib-common-org-options-processing
+  google-lib-common-create-options-processing
 
   echofmt "Testing if project '${PROJECT_ID}' already exists..."
   if ! gcloud projects describe "${PROJECT_ID}" >/dev/null 2>&1; then
@@ -43,12 +51,13 @@ google-projects-create() {
 # anyone else
 
 google-projects-create-helper-set-var() {
-  [[ -z "${PROJECT_ID_OUTPUT_VAR}" ]] || eval "${PROJECT_ID_OUTPUT_VAR}='${EFFECTIVE_NAME}'"
+  [[ -z "${ID_OUTPUT_VAR}" ]] || eval "${ID_OUTPUT_VAR}='${EFFECTIVE_NAME}'"
 }
 
 google-projects-create-helper-command() {
   local EFFECTIVE_NAME
   if [[ -z "${I:-}" ]]; then # we are in the first go around
+    rm "${INTRAWEB_TMP_ERROR}"
     EFFECTIVE_NAME="${PROJECT_ID}"
   else
     # TODO: make the max string length 'GOOGLE_MAX_PROJECT_ID_LENGTH' or sometihng and load it
@@ -56,7 +65,7 @@ google-projects-create-helper-command() {
     fill-rand --max-string-length 30 --max-number-length $(( 5 * ${I} )) --output-var EFFECTIVE_NAME "${PROJECT_ID}-"
   fi
   echofmt "Attempting to create project '${EFFECTIVE_NAME}'..."
-  # on success, will set PROJECT_ID_OUTPUT_VAR when appropriate; otherwise, exits with a failure code
+  # on success, will set ID_OUTPUT_VAR when appropriate; otherwise, exits with a failure code
   gcloud projects create "${EFFECTIVE_NAME}" --organization="${ORGANIZATION_ID}" 2> "${INTRAWEB_TMP_ERROR}" && {
     echofmt "Created project '${EFFECTIVE_NAME}' under organization ${ORGANIZATION_ID}"
     google-projects-create-helper-set-var
