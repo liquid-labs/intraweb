@@ -1,7 +1,7 @@
 google-projects-iap-oauth-setup() {
   # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
-  eval "$(setSimpleOptions $(google-lib-common-options-spec) APPLICATION_TITLE:t= SUPPORT_EMAIL:e= -- "$@")"
-  google-lib-common-options-processing
+  eval "$(setSimpleOptions $(google-lib-common-core-options-spec) APPLICATION_TITLE:t= SUPPORT_EMAIL:e= -- "$@")"
+  google-lib-common-core-options-processing
 
   local IAP_SERVICE='iap.googleapis.com'
   local IAP_STATE
@@ -41,7 +41,7 @@ google-projects-iap-oauth-setup() {
 
   # now we can setup the intraweb client
   local OAUTH_CLIENT_NAME
-  OAUTH_CLIENT_NAME=$(gcloud alpha iap oauth-clients list "${BRAND_NAME}" --format 'value(name)') >/dev/null >&2 )
+  OAUTH_CLIENT_NAME=$(gcloud alpha iap oauth-clients list "${BRAND_NAME}" --format 'value(name)')
   [[ -n "${OAUTH_CLIENT_NAME}" ]] \
     && echofmt "OAuth client '${APPLICATION_TITLE}' already exists for brand '${BRAND_NAME}'..." \
     || {
