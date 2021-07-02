@@ -52,6 +52,9 @@ deploy-test: dist/intraweb.sh .deploy-app .deploy-content
 		./dist/intraweb.sh --assume-defaults --no-deploy-app deploy || rm .deploy-content;\
 	fi
 
+deploy-test-content: dist/intraweb.sh .deploy-content
+	./dist/intraweb.sh --assume-defaults --no-deploy-app deploy || rm .deploy-content
+
 .deploy-app: $(APPENGINE_FILES)
 	$(eval DEPLOY_APP=true)
 	touch $@
