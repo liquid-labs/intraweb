@@ -34,7 +34,4 @@ intraweb-build() {
   eval gcloud-projects-iap-oauth-setup ${IAP_OPTS}
   gcloud-storage-buckets-create ${BUCKET_CREATE_OPTS}
   gcloud-app-create ${APP_CREATE_OPTS}
-
-  echo TODO
-  intraweb-deploy ${APP_CREATE_OPTS}
 }

@@ -17,7 +17,7 @@ gcloud-app-create() {
   gcloud-lib-common-options-check-access-and-report
 
   echofmt "Testing if app associated with '${PROJECT}' already exists..."
-  if ! gcloud apps describe "${PROJECT}" >/dev/null 2>&1; then
+  if ! gcloud app describe --project "${PROJECT}" >/dev/null 2>&1; then
     [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
       || echoerrandexit "App does not exist and 'create if necessary' option is not set while invoking gcloud-apps-create in non-interactive mode."
     if [[ -n "${CREATE_IF_NECESSARY}" ]] \
