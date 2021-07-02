@@ -18,7 +18,7 @@ gcloud-storage-buckets-configure() {
   if [[ -n "${UNIFORM}" ]]; then
     gsutil uniformbucketlevelaccess set on gs://${BUCKET} \
       || echoerrandexit "Failed to configure bucket '${BUCKET}' for public access."
-  elif [[ -z "${SKIP_UNIFORM_CHECK}" ]] # verify that uniformbucketlevelaccess is set
+  elif [[ -z "${SKIP_UNIFORM_CHECK}" ]]; then # verify that uniformbucketlevelaccess is set
     gsutil uniformbucketlevelaccess get gs://${BUCKET} | grep -qiE 'Enabled:\s *True' \
       || echoerrandexit "It does not appear that bucket '${BUCKET}' is setup for uniform bucket level access. Try:\n$(basename "${0}") --make-uniform"
   fi
