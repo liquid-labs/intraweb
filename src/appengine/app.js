@@ -10,12 +10,20 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-app.get('/', async (req, res) => {
-  const file = bucket.file('index.html');
-  const [ data ] = await file.get();
-  res.status(200).send(data).end();
-});
+const deslasher = /^\//
 
+const piper = (path, res) => {
+  const file = bucket.file(path);
+  const reader = file.createReadStream();
+  reader.pipe(res);
+}
+
+app.get('/', (req, res) => piper('index.html', res));
+
+app.get('/*', (req, res) => {
+  const path = req.path.replace(deslasher, '');
+  piper(path, res);
+})
 
 // start the server
 app.listen(PORT, () => {
