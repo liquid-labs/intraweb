@@ -12,17 +12,6 @@ gcloud-lib-common-options-check-access-and-report() {
   }
 }
 
-gcloud-lib-ensure-project-id() {
-  if [[ -z "${PROJECT:-}" ]]; then
-    # TODO: allow project set from active config...
-    if [[ -n "${NON_INTERACTIVE:-}" ]]; then
-      echoerrandexit "Cannot determine valid default for 'PROJECT' when invoking gcloud-project-create in non-interactive mode. A valid value must be provided prior to invocation."
-    else
-      get-answer "Google project for new intraweb project?" PROJECT "${PROJECT:-}"
-    fi
-  fi
-}
-
 gcloud-lib-common-org-options-spec() {
   echo 'ORGANIZATION='
 }

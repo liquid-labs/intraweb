@@ -16,7 +16,7 @@ gcloud-storage-buckets-create() {
     PUBLIC: \
     -- "$@")"
   # set default and common processing
-  gcloud-lib-ensure-project-id
+  ensure-setting PROJECT
   gcloud-lib-common-options-check-access-and-report
   gcloud-lib-common-retry-options-processing
 
@@ -54,11 +54,6 @@ gcloud-storage-buckets-create() {
   else # gcloud projects describe found something and the storage bucket exists
     gcloud-storage-buckets-create-helper-set-var
     echofmt "Bucket '${BUCKET}' already exists."
-  fi
-
-  if [[ -n "${PUBLIC}" ]]; then
-    gsutil defacl set public-read gs://${BUCKET} \
-      || echoerrandexit "Failed to configure bucket '${BUCKET}' for public access."
   fi
 }
 
