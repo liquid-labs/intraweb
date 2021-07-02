@@ -2,7 +2,7 @@
 
 default: all
 
-.PHONY: all clean deploy-test
+.PHONY: all clean deploy-test deploy-test-content
 
 NPM_BIN:=$(shell npm bin)
 BASH_ROLLUP:=$(NPM_BIN)/bash-rollup
