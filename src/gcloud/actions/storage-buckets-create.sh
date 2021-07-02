@@ -11,30 +11,30 @@ gcloud-storage-buckets-create() {
   # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
   eval "$(setSimpleOptions \
     $(gcloud-lib-common-core-options-spec) \
-    $(gcloud-lib-common-create-options-spec) \
-    BUCKET_ID= \
+    $(gcloud-lib-common-create-named-options-spec) \
+    BUCKET= \
     PUBLIC: \
     -- "$@")"
   # set default and common processing
   gcloud-lib-ensure-project-id
   gcloud-lib-common-options-check-access-and-report
-  gcloud-lib-common-create-options-processing
+  gcloud-lib-common-retry-options-processing
 
   local TARGET_OPTS=''
-  [[ -z "${PROJECT_ID}" ]] || TARGET_OPTS="-p ${PROJECT_ID}"
+  [[ -z "${PROJECT}" ]] || TARGET_OPTS="-p ${PROJECT}"
 
-  if [[ -z "${BUCKET_ID}" ]]; then
+  if [[ -z "${BUCKET}" ]]; then
     [[ -z "${NON_INTERACTIVE}" ]] \
       || echoerrandexit "Bucket ID not specified while invoking gcloud-storage-buckets in non-interactive mode."
-    require-answer 'Bucket ID to create?' BUCKET_ID
+    require-answer 'Bucket ID to create?' BUCKET
   fi
 
-  echofmt "Testing if storage bucket '${BUCKET_ID}' already exists..."
-  if ! gsutil ls ${TARGET_OPTS} gs://${BUCKET_ID} >/dev/null 2>&1; then
+  echofmt "Testing if storage bucket '${BUCKET}' already exists..."
+  if ! gsutil ls ${TARGET_OPTS} gs://${BUCKET} >/dev/null 2>&1; then
     [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
       || echoerrandexit "Bucket does not exist and 'create if necessary' option is not set while invoking gcloud-storage-buckets-create in non-interactive mode."
     if [[ -n "${CREATE_IF_NECESSARY}" ]] \
-        || yes-no "Storage bucket '${BUCKET_ID}' not found. Attempt to create?" 'Y'; then
+        || yes-no "Storage bucket '${BUCKET}' not found. Attempt to create?" 'Y'; then
       local FINAL_ERROR
       gcloud-storage-buckets-create-helper-command || { # if first attempt doesn't succeed, maybe we can retry?
         [[ -z "${NO_RETRY_NAMES}" ]] && { # retry is allowed
@@ -53,12 +53,12 @@ gcloud-storage-buckets-create() {
     fi # CREATE_IF_NECESSARY
   else # gcloud projects describe found something and the storage bucket exists
     gcloud-storage-buckets-create-helper-set-var
-    echofmt "Bucket '${BUCKET_ID}' already exists."
+    echofmt "Bucket '${BUCKET}' already exists."
   fi
 
   if [[ -n "${PUBLIC}" ]]; then
-    gsutil defacl set public-read gs://${BUCKET_ID} \
-      || echoerrandexit "Failed to configure bucket '${BUCKET_ID}' for public access."
+    gsutil defacl set public-read gs://${BUCKET} \
+      || echoerrandexit "Failed to configure bucket '${BUCKET}' for public access."
   fi
 }
 
@@ -73,11 +73,11 @@ gcloud-storage-buckets-create-helper-command() {
   local EFFECTIVE_NAME
   if [[ -z "${I:-}" ]]; then # we are in the first go around
     rm "${INTRAWEB_TMP_ERROR}"
-    EFFECTIVE_NAME="${BUCKET_ID}"
+    EFFECTIVE_NAME="${BUCKET}"
   else
-    # TODO: make the max string length 'GOOGLE_MAX_PROJECT_ID_LENGTH' or sometihng and load it
+    # TODO: make the max string length 'GOOGLE_MAX_PROJECT_LENGTH' or sometihng and load it
     # for every failure, we try a longer random number
-    fill-rand --max-string-length 30 --max-number-length $(( 5 * ${I} )) --output-var EFFECTIVE_NAME "${BUCKET_ID}-"
+    fill-rand --max-string-length 30 --max-number-length $(( 5 * ${I} )) --output-var EFFECTIVE_NAME "${BUCKET}-"
   fi
   echofmt "Attempting to create storage bucket '${EFFECTIVE_NAME}'..."
   # on success, will set ID_OUTPUT_VAR when appropriate; otherwise, exits with a failure code

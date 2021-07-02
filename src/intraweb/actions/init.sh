@@ -10,7 +10,7 @@ intraweb-init-lib-ensure-settings() {
   [[ -f "${INTRAWEB_SETTINGS_FILE}" ]] || touch "${INTRAWEB_SETTINGS_FILE}"
   source "${INTRAWEB_SETTINGS_FILE}"
 
-  local INTRAWEB_DEFAULT_ORGANIZATION_ID_PROMPT='Default Organization ID—a number—to nest projects under?'
+  local INTRAWEB_DEFAULT_ORGANIZATION_PROMPT='Default Organization—a number—to nest projects under?'
   local INTRAWEB_PROJECT_PREFIX_PROMPT='Default Google project prefix?'
   local INTRAWEB_COMPANY_NAME_PROMPT='Default company name?'
   local INTRAWEB_OAUTH_SUPPORT_EMAIL_PROMPT='Default OAuth authentication support email?'

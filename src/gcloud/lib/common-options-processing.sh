@@ -2,7 +2,7 @@
 # on external varaiables.
 
 gcloud-lib-common-core-options-spec() {
-  echo 'PROJECT_ID= NON_INTERACTIVE: NO_ACCOUNT_REPORT: SKIP_AUTH_CHECK:'
+  echo 'PROJECT= NON_INTERACTIVE: NO_ACCOUNT_REPORT: SKIP_AUTH_CHECK:'
 }
 
 gcloud-lib-common-options-check-access-and-report() {
@@ -13,28 +13,33 @@ gcloud-lib-common-options-check-access-and-report() {
 }
 
 gcloud-lib-ensure-project-id() {
-  if [[ -z "${PROJECT_ID:-}" ]]; then
+  if [[ -z "${PROJECT:-}" ]]; then
     # TODO: allow project set from active config...
     if [[ -n "${NON_INTERACTIVE:-}" ]]; then
-      echoerrandexit "Cannot determine valid default for 'PROJECT_ID' when invoking gcloud-project-create in non-interactive mode. A valid value must be provided prior to invocation."
+      echoerrandexit "Cannot determine valid default for 'PROJECT' when invoking gcloud-project-create in non-interactive mode. A valid value must be provided prior to invocation."
     else
-      get-answer "Google project ID for new intraweb project?" PROJECT_ID "${PROJECT_ID:-}"
+      get-answer "Google project for new intraweb project?" PROJECT "${PROJECT:-}"
     fi
   fi
 }
 
 gcloud-lib-common-org-options-spec() {
-  echo 'ORGANIZATION_ID='
+  echo 'ORGANIZATION='
 }
 
 gcloud-lib-common-org-options-processing() {
-  [[ -n "${ORGANIZATION_ID:-}" ]] || echoerrandexit 'Organization ID (--organization-id=xxxx) is required.'
+  [[ -n "${ORGANIZATION:-}" ]] || echoerrandexit 'Organization (--organization=xxxx) is required.'
 }
 
 gcloud-lib-common-create-options-spec() {
-  echo 'CREATE_IF_NECESSARY NO_RETRY_NAMES: RETRY_COUNT:= ID_OUTPUT_VAR'
+  echo 'CREATE_IF_NECESSARY'
 }
 
-gcloud-lib-common-create-options-processing() {
+gcloud-lib-common-create-named-options-spec() {
+  gcloud-lib-common-create-options-spec
+  echo 'NO_RETRY_NAMES: RETRY_COUNT:= ID_OUTPUT_VAR'
+}
+
+gcloud-lib-common-retry-options-processing() {
   [[ -n "${RETRY_COUNT:-}" ]] || RETRY_COUNT=3
 }

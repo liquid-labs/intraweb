@@ -1,3 +1,3 @@
 intraweb-update-web() {
-  echoerrandexit TODO
+  gcloud app deploy ./src/appengine/app.yaml --project ${PROJECT}
 }

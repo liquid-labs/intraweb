@@ -12,26 +12,26 @@ gcloud-projects-create() {
   eval "$(setSimpleOptions \
     $(gcloud-lib-common-core-options-spec) \
     $(gcloud-lib-common-org-options-spec) \
-    $(gcloud-lib-common-create-options-spec) \
+    $(gcloud-lib-common-create-named-options-spec) \
     -- "$@")"
   # set default and common processing
   gcloud-lib-ensure-project-id
   gcloud-lib-common-options-check-access-and-report
   gcloud-lib-common-org-options-processing
-  gcloud-lib-common-create-options-processing
+  gcloud-lib-common-retry-options-processing
 
-  echofmt "Testing if project '${PROJECT_ID}' already exists..."
-  if ! gcloud projects describe "${PROJECT_ID}" >/dev/null 2>&1; then
+  echofmt "Testing if project '${PROJECT}' already exists..."
+  if ! gcloud projects describe "${PROJECT}" >/dev/null 2>&1; then
     [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
       || echoerrandexit "Project does not exist and 'create if necessary' option is not set while invoking gcloud-projects-create in non-interactive mode."
     if [[ -n "${CREATE_IF_NECESSARY}" ]] \
-        || yes-no "Project '${PROJECT_ID}' not found. Attempt to create?" 'Y'; then
+        || yes-no "Project '${PROJECT}' not found. Attempt to create?" 'Y'; then
       local FINAL_ERROR
       gcloud-projects-create-helper-command || { # if first attempt doesn't succeed, maybe we can retry?
         [[ -z "${NO_RETRY_NAMES}" ]] && { # retry is allowed
           local I=1
           while (( ${I} <= ${RETRY_COUNT} )); do
-            echofmt "There seems to have been a problem; this may be because the global project ID is taken. Retrying ${I} of ${RETRY_COUNT}..."
+            echofmt "There seems to have been a problem; this may be because the global project is taken. Retrying ${I} of ${RETRY_COUNT}..."
             { gcloud-projects-create-helper-command &&  break; } || {
               I=$(( ${I} + 1 ))
               (( ${I} <= ${RETRY_COUNT} ))
@@ -44,7 +44,7 @@ gcloud-projects-create() {
     fi # CREATE_IF_NECESSARY
   else # gcloud projects describe found something and the project exists
     gcloud-projects-create-helper-set-var
-    echofmt "Project '${PROJECT_ID}' already exists under organization ${ORGANIZATION_ID}."
+    echofmt "Project '${PROJECT}' already exists under organization ${ORGANIZATION}."
   fi
 }
 
@@ -59,16 +59,16 @@ gcloud-projects-create-helper-command() {
   local EFFECTIVE_NAME
   if [[ -z "${I:-}" ]]; then # we are in the first go around
     rm "${INTRAWEB_TMP_ERROR}"
-    EFFECTIVE_NAME="${PROJECT_ID}"
+    EFFECTIVE_NAME="${PROJECT}"
   else
-    # TODO: make the max string length 'GOOGLE_MAX_PROJECT_ID_LENGTH' or sometihng and load it
+    # TODO: make the max string length 'GOOGLE_MAX_PROJECT_LENGTH' or sometihng and load it
     # for every failure, we try a longer random number
-    fill-rand --max-string-length 30 --max-number-length $(( 5 * ${I} )) --output-var EFFECTIVE_NAME "${PROJECT_ID}-"
+    fill-rand --max-string-length 30 --max-number-length $(( 5 * ${I} )) --output-var EFFECTIVE_NAME "${PROJECT}-"
   fi
   echofmt "Attempting to create project '${EFFECTIVE_NAME}'..."
   # on success, will set ID_OUTPUT_VAR when appropriate; otherwise, exits with a failure code
-  gcloud projects create "${EFFECTIVE_NAME}" --organization="${ORGANIZATION_ID}" 2> "${INTRAWEB_TMP_ERROR}" && {
-    echofmt "Created project '${EFFECTIVE_NAME}' under organization ${ORGANIZATION_ID}"
+  gcloud projects create "${EFFECTIVE_NAME}" --organization="${ORGANIZATION}" 2> "${INTRAWEB_TMP_ERROR}" && {
+    echofmt "Created project '${EFFECTIVE_NAME}' under organization ${ORGANIZATION}"
     gcloud-projects-create-helper-set-var
   }
 }

@@ -5,21 +5,21 @@ gcloud-projects-iap-oauth-setup() {
 
   local IAP_SERVICE='iap.googleapis.com'
   local IAP_STATE
-  IAP_STATE=$(gcloud services list --project=${PROJECT_ID} \
+  IAP_STATE=$(gcloud services list --project=${PROJECT} \
     --available \
     --filter="name:${IAP_SERVICE}" \
     --format='value(name)')
   if [[ "${IAP_STATE}" == 'ENABLED' ]]; then
-    echofmt "Service '${IAP_SERVICE}' already enabled for project '${PROJECT_ID}'."
+    echofmt "Service '${IAP_SERVICE}' already enabled for project '${PROJECT}'."
   else
-    gcloud services enable ${IAP_SERVICE} --project=${PROJECT_ID} \
-      && echofmt "IAP service enableled for project '${PROJECT_ID}'..." \
+    gcloud services enable ${IAP_SERVICE} --project=${PROJECT} \
+      && echofmt "IAP service enableled for project '${PROJECT}'..." \
       || echoerrandexit "Error enabling service. Refer to any error report above. Try again later or enable manually."
   fi
 
   # Check if OAuth brand is configured, and if not, attempt to configure it.
   local BRAND_NAME
-  BRAND_NAME=$(gcloud alpha iap oauth-brands list --project=${PROJECT_ID} --format='value(name)')
+  BRAND_NAME=$(gcloud alpha iap oauth-brands list --project=${PROJECT} --format='value(name)')
   [[ -n ${BRAND_NAME} ]] \
     && echofmt "IAP OAuth brand '${BRAND_NAME}' already configured..." \
     || {
@@ -31,11 +31,11 @@ gcloud-projects-iap-oauth-setup() {
       require-answer 'Application title (for OAuth authentication)?' APPLICATION_TITLE "${APPLICATION_TITLE}"
       require-answer 'Support email for for OAuth authentication problems?' SUPPORT_EMAIL "${SUPPORT_EMAIL}"
       # Finally, all the data is gathered and we're ready to actually configure.
-      BRAND_NAME=$(gcloud alpha iap oauth-brands create --project=${PROJECT_ID} \
+      BRAND_NAME=$(gcloud alpha iap oauth-brands create --project=${PROJECT} \
           --application_title="${APPLICATION_TITLE}" \
           --support_email="${SUPPORT_EMAIL}" \
           --format='value(name)') \
-        && echofmt "IAP-OAuth brand identify configured for project '${PROJECT_ID}' with title '${APPLICATION_TITLE}' and support email '${SUPPORT_EMAIL}'..." \
+        && echofmt "IAP-OAuth brand identify configured for project '${PROJECT}' with title '${APPLICATION_TITLE}' and support email '${SUPPORT_EMAIL}'..." \
         || echoerrandexit "Error configuring OAuth brand identity. Refer to any errors above. Try again later or enable manually."
     } # brand setup
 
@@ -48,7 +48,7 @@ gcloud-projects-iap-oauth-setup() {
       echofmt "Attempting to create new OAuth client..."
       OAUTH_CLIENT_NAME=$(gcloud alpha iap oauth-clients create ${BRAND_NAME} \
         --display_name "${APPLICATION_TITLE}" \
-        --project ${PROJECT_ID} \
+        --project ${PROJECT} \
         --format 'value(name)')
     } # oauth client setup
 }
