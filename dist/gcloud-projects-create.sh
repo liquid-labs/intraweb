@@ -1,10 +1,4 @@
-#!/usr/bin/env bash
-
-# bash strict settings
-set -o errexit # exit on errors; set -e
-set -o nounset # exit on use of uninitialized variable
-set -o pipefail # exit if any part of a pipeline fails (rather than just on failure of final piece)
-
+# note, this file is generated to be source-able, but not directly executable
 # http://linuxcommand.org/lc3_adv_tput.php
 red=`tput setaf 1`
 green=`tput setaf 2`
@@ -671,193 +665,80 @@ gather-answers() {
     fi
   done
 }
-function real_path {
-  local FILE="${1:-}"
-  if [[ -z "$FILE" ]]; then
-    echo "'real_path' requires target file specified." >&2
-    return 1
-  elif [[ ! -e "$FILE" ]]; then
-    echo "Target file '$FILE' does not exist." >&2
-    return 1
-  fi
 
-  function trim_slash {
-    # sed adds a newline ()
-    printf "$1" | sed 's/\/$//' | tr -d '\n'
+gcloud-account-report() {
+  local ACTIVE_GCLOUD_ACCOUNT=$(gcloud config configurations list --filter='is_active=true' --format 'value(properties.core.account)')
+  echofmt "Using account '${ACTIVE_GCLOUD_ACCOUNT}'..."
+}
+gcloud-check-access() {
+  gcloud projects list > /dev/null ||
+    echoerrandexit "\nIt does not appear we can access the Google Cloud. This may be due to stale or lack of  authentication tokens. See above for more information."
+}
+# These are common helper functions meant to be called by higher level functions utilizing the common options. They rely
+# on external varaiables.
+
+gcloud-lib-common-core-options-spec() {
+  echo 'PROJECT= NON_INTERACTIVE: NO_ACCOUNT_REPORT: SKIP_AUTH_CHECK:'
+}
+
+gcloud-lib-common-options-check-access-and-report() {
+  [[ -n "${SKIP_AUTH_CHECK:-}" ]] || {
+    gcloud-check-access
+    [[ -n "${NO_ACCOUNT_REPORT:-}" ]] || gcloud-account-report
   }
-  # [[ -h /foo/link_dir ]] works, but [[ -h /foo/link_dir/ ]] does not!
-  FILE=`trim_slash "$FILE"`
+}
 
-  if [[ -h "$FILE" ]]; then
-    function resolve_link {
-      local POSSIBLE_REL_LINK="${1:-}"
-      local APPEND="${2:-}"
-      if [[ "$POSSIBLE_REL_LINK" == /* ]]; then
-        # for some reason 'echo -n' was echoing the '-n' when this was used
-        # included in the catalyst-scripts. Not sure why, and don't know how
-        # to test, but 'printf' does what we need.
-        printf "$POSSIBLE_REL_LINK${APPEND}"
+gcloud-lib-common-org-options-spec() {
+  echo 'ORGANIZATION='
+}
+
+gcloud-lib-common-org-options-processing() {
+  [[ -n "${ORGANIZATION:-}" ]] || echoerrandexit 'Organization (--organization=xxxx) is required.'
+}
+
+gcloud-lib-common-create-options-spec() {
+  echo 'CREATE_IF_NECESSARY'
+}
+
+gcloud-lib-common-create-named-options-spec() {
+  gcloud-lib-common-create-options-spec
+  echo 'NO_RETRY_NAMES: RETRY_COUNT:= ID_OUTPUT_VAR'
+}
+
+gcloud-lib-common-retry-options-processing() {
+  [[ -n "${RETRY_COUNT:-}" ]] || RETRY_COUNT=3
+}
+ensure-settings() {
+  while (( $# > 0 )); do
+    local SETTING="${1}"; shift
+    if [[ -z "${!SETTING:-}" ]]; then
+      if [[ -n "${NON_INTERACTIVE:-}" ]]; then
+        echoerrandexit "Cannot determine valid default for '${SETTING}' in non-interactive mode. A valid value must be discernable or set on invocation."
       else
-        # Now we go into the dir containg the link and then navigate the possibly
-        # relative link to the real dir. The subshell preserves the caller's PWD.
-        (cd "$(dirname "$FILE")"
-        cd "$POSSIBLE_REL_LINK"
-        printf "${PWD}${APPEND}")
+        get-answer "Value for '${SETTING}?'" ${SETTING} "${!SETTING:-}"
       fi
-    }
-
-    if [[ ! -d "$FILE" ]]; then
-      # we need to get the real path to the real file
-      local REAL_FILE_LINK_PATH="$(readlink "$FILE")"
-      resolve_link "$(dirname "$REAL_FILE_LINK_PATH")" "/$(basename "$REAL_FILE_LINK_PATH")"
-    else
-      # we need to get the real path of the linked directory
-      resolve_link "$(readlink "$FILE")"
     fi
+  done
+}
+fill-rand() {
+  eval "$(setSimpleOptions MAX_STRING_LENGTH:= MAX_NUMBER_LENGTH:= OUTPUT_VAR:= -- "$@")"
+  local BASE_STRING="${1}"
+  local NUMBER=""
+
+  while (( ${#NUMBER} < ${MAX_NUMBER_LENGTH} )) && (( ( ${#NUMBER} + ${#BASE_STRING} ) < ${MAX_STRING_LENGTH} )); do
+    NUMBER="${NUMBER}${RANDOM}"
+    NUMBER=${NUMBER:0:${MAX_NUMBER_LENGTH}}
+    if (( ( ${#NUMBER} + ${#BASE_STRING} ) > ${MAX_STRING_LENGTH} )); then
+      MAX_NUMBER_LENGTH=$(( ${MAX_STRING_LENGTH} - ${#BASE_STRING}))
+      NUMBER=${NUMBER:0:${MAX_NUMBER_LENGTH}}
+    fi
+  done
+
+  local CONCAT="${BASE_STRING}${NUMBER}"
+  if [[ -n "${OUTPUT_VAR}" ]]; then
+    eval "${OUTPUT_VAR}='${CONCAT}'"
   else
-    printf "$FILE"
-  fi
-}
-
-intraweb-build() {
-  # first, we do our own global auth check
-  gcloud-lib-common-options-check-access-and-report
-  # and now we can skip the auth check for the individual steps
-  local COMMON_OPTS="--skip-auth-check"
-  local PROJECT_CREATE_OPTS="${COMMON_OPTS} --organization ${ORGANIZATION}"
-  local IAP_OPTS="${COMMON_OPTS}"
-  local BUCKET_CREATE_OPTS="${COMMON_OPTS}"
-  local APP_CREATE_OPTS="${COMMON_OPTS}"
-  if [[ -n "${PROJECT:-}" ]]; then
-    PROJECT_CREATE_OPTS="${PROJECT_CREATE_OPTS} --project ${PROJECT}"
-    IAP_OPTS="${IAP_OPTS} --project ${PROJECT}"
-    BUCKET_CREATE_OPTS="${BUCKET_CREATE_OPTS} --project ${PROJECT}"
-    APP_CREATE_OPTS="${APP_CREATE_OPTS} --project ${PROJECT}"
-  fi
-  if [[ -n "${ASSUME_DEFAULTS:-}" ]]; then
-    PROJECT_CREATE_OPTS="${PROJECT_CREATE_OPTS} --non-interactive --create-if-necessary"
-    IAP_OPTS="${IAP_OPTS} --non-interactive"
-    BUCKET_CREATE_OPTS="${BUCKET_CREATE_OPTS} --non-interactive --create-if-necessary"
-    [[ -z "${BUCKET}" ]] || BUCKET_CREATE_OPTS="${BUCKET_CREATE_OPTS} --bucket ${BUCKET}"
-    APP_CREATE_OPTS="${APP_CREATE_OPTS} --non-interactive --create-if-necessary"
-  fi
-  [[ -z "${APPLICATION_TITLE}" ]] || IAP_OPTS="${IAP_OPTS} --application-title '${APPLICATION_TITLE}'"
-  [[ -z "${SUPPORT_EMAIL}" ]] || IAP_OPTS="${IAP_OPTS} --support-email '${SUPPORT_EMAIL}'"
-  [[ -z "${REGION}" ]] || APP_CREATE_OPTS="${APP_CREATE_OPTS} --region ${REGION}" # TODO: do others take a region?
-
-  # no 'eval' necessary here; we don't expect any spaces (see note below in 'gcloud-projects-iap-oauth-setup' call)
-  gcloud-projects-create ${PROJECT_CREATE_OPTS}
-
-  # without the eval, the '-quotes get read as literal, to the tokens end up being like:
-  # --application_title|'Foo|Bar'|--support_email|'foo@bar.com'
-  # as if the email literally began and ended with ticks and any title with spaces gets cut up.
-  eval gcloud-projects-iap-oauth-setup ${IAP_OPTS}
-  gcloud-storage-buckets-create ${BUCKET_CREATE_OPTS}
-  gcloud-app-create ${APP_CREATE_OPTS}
-}
-intraweb-deploy() {
-  local APP_DEPLOY_OPTS
-  [[ -z "${PROJECT:-}" ]] || APP_DEPLOY_OPTS="--project ${PROJECT}"
-  [[ -z "${ASSUME_DEFAULTS:-}" ]] || APP_DEPLOY_OPTS="${APP_DEPLOY_OPTS} --quiet" # skips delpoy confirm
-
-  [[ -n "${NO_DEPLOY_CONTENT:-}" ]] || \
-    gsutil -m rsync -r src/test/hello-world-web gs://${BUCKET}
-
-  [[ -n "${NO_DEPLOY_APP:-}" ]] || \
-    gcloud app deploy ./src/appengine/app.yaml ${APP_DEPLOY_OPTS}
-}
-intraweb-init() {
-  local DIR
-  for DIR in INTRAWEB_DB INTRAWEB_CACHE; do
-    [[ -d "${!DIR}" ]] || mkdir "${!DIR}"
-  done
-  intraweb-init-lib-ensure-settings
-}
-
-intraweb-init-lib-ensure-settings() {
-  [[ -f "${INTRAWEB_SETTINGS_FILE}" ]] || touch "${INTRAWEB_SETTINGS_FILE}"
-  source "${INTRAWEB_SETTINGS_FILE}"
-
-  local INTRAWEB_DEFAULT_ORGANIZATION_PROMPT='Default Organization—a number—to nest projects under?'
-  local INTRAWEB_PROJECT_PREFIX_PROMPT='Default Google project prefix?'
-  local INTRAWEB_COMPANY_NAME_PROMPT='Default company name?'
-  local INTRAWEB_OAUTH_SUPPORT_EMAIL_PROMPT='Default OAuth authentication support email?'
-
-  local SETTING PROMPT_VAR
-  for SETTING in ${INTRAWEB_SETTINGS}; do
-    PROMPT_VAR="${SETTING}_PROMPT"
-    eval require-answer --force "'${!PROMPT_VAR:=${SETTING}?}'" "${SETTING}" "'${!SETTING:-}'"
-  done
-
-  intraweb-init-lib-update-settings
-}
-
-intraweb-init-lib-update-settings() {
-  ! [[ -f "${INTRAWEB_SETTINGS_FILE}" ]] || rm "${INTRAWEB_SETTINGS_FILE}"
-  local SETTING
-  for SETTING in ${INTRAWEB_SETTINGS}; do
-    echo "${SETTING}='${!SETTING}'" >> "${INTRAWEB_SETTINGS_FILE}"
-  done
-}
-intraweb-run() {
-  :
-}
-# set in the main CLI; declared here for completness
-ACTION=""
-ASSUME_DEFAULTS=""
-PROJECT=""
-ORGANIZATION=""
-# end cli option globals
-
-VALID_ACTIONS="init build deploy run"
-INTRAWEB_SETTINGS="INTRAWEB_DEFAULT_ORGANIZATION INTRAWEB_PROJECT_PREFIX INTRAWEB_COMPANY_NAME INTRAWEB_OAUTH_SUPPORT_EMAIL"
-
-INTRAWEB_DB="${HOME}/.intraweb"
-INTRAWEB_CACHE="${INTRAWEB_DB}/cache"
-INTRAWEB_TMP_ERROR="${INTRAWEB_CACHE}/temp-error.txt"
-
-INTRAWEB_SETTINGS_FILE="${INTRAWEB_DB}/settings.sh"
-usage() {
-  echo "TODO"
-}
-
-usage-bad-action() {
-  usage
-  echoerrandexit "\nMust specify a valid action as first argument:\n\nintraweb [ $(echo "${VALID_ACTIONS}" | sed 's/ / \| /g') ]\n\nSee usage above for further details."
-}
-# TODO: we have older gcloud code... somewhere that handles some of this stuff. Like, maybe dealing with the project 'name'
-
-# Utility to robustly create a new Google project. Since projects IDs are (bizarely) both global /and/ entirely
-# unreserved, there is often contention for project names and by default the utility will attempt to append random
-# numbers in order to locate a free name.
-#
-# --non-interactive : causes flows that would otherwise result in a user prompt to instead halt with an error
-gcloud-app-create() {
-  # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
-  eval "$(setSimpleOptions \
-    $(gcloud-lib-common-core-options-spec) \
-    $(gcloud-lib-common-create-options-spec) \
-    REGION= \
-    -- "$@")"
-  # set default and common processing
-  ensure-settings PROJECT
-  gcloud-lib-common-options-check-access-and-report
-
-  echofmt "Testing if app associated with '${PROJECT}' already exists..."
-  if ! gcloud app describe --project "${PROJECT}" >/dev/null 2>&1; then
-    [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
-      || echoerrandexit "App does not exist and 'create if necessary' option is not set while invoking gcloud-apps-create in non-interactive mode."
-    if [[ -n "${CREATE_IF_NECESSARY}" ]] \
-        || yes-no "App for '${PROJECT}' not found. Attempt to create?" 'Y'; then
-      local CREATE_OPTS
-      [[ -z "${PROJECT}" ]] || CREATE_OPTS="--project ${PROJECT}"
-      [[ -z "${REGION}" ]] || CREATE_OPTS="--region ${REGION}"
-      gcloud app create ${CREATE_OPTS} \
-        && echo "App created for project '${PROJECT}'" \
-        || echoerrandexit "Unable to create app. See app."
-    fi # CREATE_IF_NECESSARY
-  else # gcloud projects describe found something and the project exists
-    echofmt "App for project '${PROJECT}' already exists."
+    echo "${CONCAT}"
   fi
 }
 # TODO: we have older gcloud code... somewhere that handles some of this stuff. Like, maybe dealing with the project 'name'
@@ -934,338 +815,3 @@ gcloud-projects-create-helper-command() {
     gcloud-projects-create-helper-set-var
   }
 }
-gcloud-projects-iap-oauth-setup() {
-  # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
-  eval "$(setSimpleOptions $(gcloud-lib-common-core-options-spec) APPLICATION_TITLE:t= SUPPORT_EMAIL:e= -- "$@")"
-  ensure-settings PROJECT
-
-  local IAP_SERVICE='iap.googleapis.com'
-  local IAP_STATE
-  IAP_STATE=$(gcloud services list --project=${PROJECT} \
-    --available \
-    --filter="name:${IAP_SERVICE}" \
-    --format='value(name)')
-  if [[ "${IAP_STATE}" == 'ENABLED' ]]; then
-    echofmt "Service '${IAP_SERVICE}' already enabled for project '${PROJECT}'."
-  else
-    gcloud services enable ${IAP_SERVICE} --project=${PROJECT} \
-      && echofmt "IAP service enableled for project '${PROJECT}'..." \
-      || echoerrandexit "Error enabling service. Refer to any error report above. Try again later or enable manually."
-  fi
-
-  # Check if OAuth brand is configured, and if not, attempt to configure it.
-  local BRAND_NAME
-  BRAND_NAME=$(gcloud alpha iap oauth-brands list --project=${PROJECT} --format='value(name)')
-  [[ -n ${BRAND_NAME} ]] \
-    && echofmt "IAP OAuth brand '${BRAND_NAME}' already configured..." \
-    || {
-      # Check if we have 'non-interactive' set and blow up if we don't have the data we need.
-      [[ -z "${NON_INTERACTIVE}" ]] \
-        || { [[ -n "${APPLICATION_TITLE}" ]] && [[ -n "${SUPPORT_EMAIL}" ]]; } \
-        || echoerrandexit "Must provide application title and support email when running in non-interactive mode."
-      # If the defaults are present, then it is considered answered and nothing happens.
-      require-answer 'Application title (for OAuth authentication)?' APPLICATION_TITLE "${APPLICATION_TITLE}"
-      require-answer 'Support email for for OAuth authentication problems?' SUPPORT_EMAIL "${SUPPORT_EMAIL}"
-      # Finally, all the data is gathered and we're ready to actually configure.
-      BRAND_NAME=$(gcloud alpha iap oauth-brands create --project=${PROJECT} \
-          --application_title="${APPLICATION_TITLE}" \
-          --support_email="${SUPPORT_EMAIL}" \
-          --format='value(name)') \
-        && echofmt "IAP-OAuth brand identify configured for project '${PROJECT}' with title '${APPLICATION_TITLE}' and support email '${SUPPORT_EMAIL}'..." \
-        || echoerrandexit "Error configuring OAuth brand identity. Refer to any errors above. Try again later or enable manually."
-    } # brand setup
-
-  # now we can setup the intraweb client
-  local OAUTH_CLIENT_NAME
-  OAUTH_CLIENT_NAME=$(gcloud alpha iap oauth-clients list "${BRAND_NAME}" --format 'value(name)')
-  [[ -n "${OAUTH_CLIENT_NAME}" ]] \
-    && echofmt "OAuth client '${APPLICATION_TITLE}' already exists for brand '${BRAND_NAME}'..." \
-    || {
-      echofmt "Attempting to create new OAuth client..."
-      OAUTH_CLIENT_NAME=$(gcloud alpha iap oauth-clients create ${BRAND_NAME} \
-        --display_name "${APPLICATION_TITLE}" \
-        --project ${PROJECT} \
-        --format 'value(name)')
-    } # oauth client setup
-}
-gcloud-storage-buckets-configure() {
-  eval "$(setSimpleOptions \
-    $(gcloud-lib-common-core-options-spec) \
-    BUCKET= \
-    PUBLIC: \
-    PRIVATE: \
-    MAKE_UNIFORM: \
-    SKIP_UNIFORM_CHECK:U \
-    -- "$@")"
-  # set default and common processing
-  gcloud-lib-common-options-check-access-and-report
-
-  ensure-settings BUCKET
-
-  [[ -z "${PUBLIC}" ]] || [[- z "${PRIVATE}" ]] \
-    || echoerrandexit "'--public' and '--private' are incompatible. options."
-
-  if [[ -n "${UNIFORM}" ]]; then
-    gsutil uniformbucketlevelaccess set on gs://${BUCKET} \
-      || echoerrandexit "Failed to configure bucket '${BUCKET}' for public access."
-  elif [[ -z "${SKIP_UNIFORM_CHECK}" ]]; then # verify that uniformbucketlevelaccess is set
-    gsutil uniformbucketlevelaccess get gs://${BUCKET} | grep -qiE 'Enabled:\s *True' \
-      || echoerrandexit "It does not appear that bucket '${BUCKET}' is setup for uniform bucket level access. Try:\n$(basename "${0}") --make-uniform"
-  fi
-
-  if [[ -n "${PRIVATE}" ]]; then
-    gsutil iam ch -d 'allUsers:objectViewer' gs://${BUCKET} \
-      || echoerrandexit "Failed to configure bucket '${BUCKET}' for public access."
-  elif [[ -n "${PUBLIC}" ]]; then
-    gsutil iam ch 'allUsers:objectViewer' gs://${BUCKET} \
-      || echoerrandexit "Failed to configure bucket '${BUCKET}' for public access."
-  fi
-}
-# TODO: we have older gcloud code... somewhere that handles some of this stuff. Like, maybe dealing with the project 'name'
-
-# Utility to robustly create a new Google storage bucket. Since storage buckets IDs are (bizarely) both global /and/ entirely
-# unreserved, there is often contention for storage bucket names and by default the utility will attempt to append random
-# numbers in order to locate a free name.
-#
-# --no-retry-names : if storage bucket creation fails possibly because of name collision, then the utility will fail
-#   immediately rather than append random number and retry
-# --non-interactive : causes flows that would otherwise result in a user prompt to instead halt with an error
-gcloud-storage-buckets-create() {
-  # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
-  eval "$(setSimpleOptions \
-    $(gcloud-lib-common-core-options-spec) \
-    $(gcloud-lib-common-create-named-options-spec) \
-    BUCKET= \
-    PUBLIC: \
-    -- "$@")"
-  # set default and common processing
-  ensure-settings PROJECT
-  gcloud-lib-common-options-check-access-and-report
-  gcloud-lib-common-retry-options-processing
-
-  local TARGET_OPTS=''
-  [[ -z "${PROJECT}" ]] || TARGET_OPTS="-p ${PROJECT}"
-
-  if [[ -z "${BUCKET}" ]]; then
-    [[ -z "${NON_INTERACTIVE}" ]] \
-      || echoerrandexit "Bucket ID not specified while invoking gcloud-storage-buckets in non-interactive mode."
-    require-answer 'Bucket ID to create?' BUCKET
-  fi
-
-  echofmt "Testing if storage bucket '${BUCKET}' already exists..."
-  if ! gsutil ls ${TARGET_OPTS} gs://${BUCKET} >/dev/null 2>&1; then
-    [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
-      || echoerrandexit "Bucket does not exist and 'create if necessary' option is not set while invoking gcloud-storage-buckets-create in non-interactive mode."
-    if [[ -n "${CREATE_IF_NECESSARY}" ]] \
-        || yes-no "Storage bucket '${BUCKET}' not found. Attempt to create?" 'Y'; then
-      local FINAL_ERROR
-      gcloud-storage-buckets-create-helper-command || { # if first attempt doesn't succeed, maybe we can retry?
-        [[ -z "${NO_RETRY_NAMES}" ]] && { # retry is allowed
-          local I=1
-          while (( ${I} <= ${RETRY_COUNT} )); do
-            echofmt "There seems to have been a problem; this may be because the global storage bucket ID is taken. Retrying ${I} of ${RETRY_COUNT}..."
-            { gcloud-storage-buckets-create-helper-command &&  break; } || {
-              I=$(( ${I} + 1 ))
-              (( ${I} <= ${RETRY_COUNT} ))
-            }
-          done
-        } # retry allowed block
-      } || { # final; we're out of retries
-        echoerrandexit "Could not create storage bucket. Error message on last attempt was: $(<"${INTRAWEB_TMP_ERROR}")"
-      }
-    fi # CREATE_IF_NECESSARY
-  else # gcloud projects describe found something and the storage bucket exists
-    gcloud-storage-buckets-create-helper-set-var
-    echofmt "Bucket '${BUCKET}' already exists."
-  fi
-}
-
-# helper functions; these functions rely on the parent function variables and are not intended to be called directly by
-# anyone else
-
-gcloud-storage-buckets-create-helper-set-var() {
-  [[ -z "${ID_OUTPUT_VAR}" ]] || eval "${ID_OUTPUT_VAR}='${EFFECTIVE_NAME}'"
-}
-
-gcloud-storage-buckets-create-helper-command() {
-  local EFFECTIVE_NAME
-  if [[ -z "${I:-}" ]]; then # we are in the first go around
-    rm "${INTRAWEB_TMP_ERROR}"
-    EFFECTIVE_NAME="${BUCKET}"
-  else
-    # TODO: make the max string length 'GOOGLE_MAX_PROJECT_LENGTH' or sometihng and load it
-    # for every failure, we try a longer random number
-    fill-rand --max-string-length 30 --max-number-length $(( 5 * ${I} )) --output-var EFFECTIVE_NAME "${BUCKET}-"
-  fi
-  echofmt "Attempting to create storage bucket '${EFFECTIVE_NAME}'..."
-  # on success, will set ID_OUTPUT_VAR when appropriate; otherwise, exits with a failure code
-  echo gsutil mb ${TARGET_OPTS} gs://${EFFECTIVE_NAME} # DEBUG
-  gsutil mb ${TARGET_OPTS} gs://${EFFECTIVE_NAME} 2> "${INTRAWEB_TMP_ERROR}" && {
-    echofmt "Created storage bucket '${EFFECTIVE_NAME}'."
-    gcloud-storage-buckets-create-helper-set-var
-  }
-}
-gcloud-account-report() {
-  local ACTIVE_GCLOUD_ACCOUNT=$(gcloud config configurations list --filter='is_active=true' --format 'value(properties.core.account)')
-  echofmt "Using account '${ACTIVE_GCLOUD_ACCOUNT}'..."
-}
-gcloud-check-access() {
-  gcloud projects list > /dev/null ||
-    echoerrandexit "\nIt does not appear we can access the Google Cloud. This may be due to stale or lack of  authentication tokens. See above for more information."
-}
-# These are common helper functions meant to be called by higher level functions utilizing the common options. They rely
-# on external varaiables.
-
-gcloud-lib-common-core-options-spec() {
-  echo 'PROJECT= NON_INTERACTIVE: NO_ACCOUNT_REPORT: SKIP_AUTH_CHECK:'
-}
-
-gcloud-lib-common-options-check-access-and-report() {
-  [[ -n "${SKIP_AUTH_CHECK:-}" ]] || {
-    gcloud-check-access
-    [[ -n "${NO_ACCOUNT_REPORT:-}" ]] || gcloud-account-report
-  }
-}
-
-gcloud-lib-common-org-options-spec() {
-  echo 'ORGANIZATION='
-}
-
-gcloud-lib-common-org-options-processing() {
-  [[ -n "${ORGANIZATION:-}" ]] || echoerrandexit 'Organization (--organization=xxxx) is required.'
-}
-
-gcloud-lib-common-create-options-spec() {
-  echo 'CREATE_IF_NECESSARY'
-}
-
-gcloud-lib-common-create-named-options-spec() {
-  gcloud-lib-common-create-options-spec
-  echo 'NO_RETRY_NAMES: RETRY_COUNT:= ID_OUTPUT_VAR'
-}
-
-gcloud-lib-common-retry-options-processing() {
-  [[ -n "${RETRY_COUNT:-}" ]] || RETRY_COUNT=3
-}
-ensure-settings() {
-  while (( $# > 0 )); do
-    local SETTING="${1}"; shift
-    if [[ -z "${!SETTING:-}" ]]; then
-      if [[ -n "${NON_INTERACTIVE:-}" ]]; then
-        echoerrandexit "Cannot determine valid default for '${SETTING}' in non-interactive mode. A valid value must be discernable or set on invocation."
-      else
-        get-answer "Value for '${SETTING}?'" ${SETTING} "${!SETTING:-}"
-      fi
-    fi
-  done
-}
-fill-rand() {
-  eval "$(setSimpleOptions MAX_STRING_LENGTH:= MAX_NUMBER_LENGTH:= OUTPUT_VAR:= -- "$@")"
-  local BASE_STRING="${1}"
-  local NUMBER=""
-
-  while (( ${#NUMBER} < ${MAX_NUMBER_LENGTH} )) && (( ( ${#NUMBER} + ${#BASE_STRING} ) < ${MAX_STRING_LENGTH} )); do
-    NUMBER="${NUMBER}${RANDOM}"
-    NUMBER=${NUMBER:0:${MAX_NUMBER_LENGTH}}
-    if (( ( ${#NUMBER} + ${#BASE_STRING} ) > ${MAX_STRING_LENGTH} )); then
-      MAX_NUMBER_LENGTH=$(( ${MAX_STRING_LENGTH} - ${#BASE_STRING}))
-      NUMBER=${NUMBER:0:${MAX_NUMBER_LENGTH}}
-    fi
-  done
-
-  local CONCAT="${BASE_STRING}${NUMBER}"
-  if [[ -n "${OUTPUT_VAR}" ]]; then
-    eval "${OUTPUT_VAR}='${CONCAT}'"
-  else
-    echo "${CONCAT}"
-  fi
-}
-# but NOT ./sources; ./sources contains exported 'sourceable' functions
-
-if [[ -f "${INTRAWEB_SETTINGS_FILE}" ]]; then
-  source "${INTRAWEB_SETTINGS_FILE}"
-fi
-
-# The first group are user visible config options. These will be automatically provided if '--assume-defaults' is
-# toggled.
-#
-# The second group, staarting at '--assume-defaults', affect the behavior of the app.
-#
-# The third group, starting at '--organization', affect associotions of any created components. These can typically
-# be gleaned from the active 'gcloud config', but can be overriden here.
-eval "$(setSimpleOptions --script \
-  APPLICATION_TITLE:t= \
-  SUPPORT_EMAIL:e= \
-  ASSUME_DEFAULTS: \
-  NO_DEPLOY_APP:A \
-  NO_DEPLOY_CONTENT:C \
-  ORGANIZATION= \
-  PROJECT= \
-  NO_INFER_PROJECT: \
-  BUCKET= \
-  REGION= \
-  NO_INFER_REGION: -- "$@")"
-ACTION="${1:-}"
-if [[ -z "${ACTION}" ]]; then
-  usage-bad-action # will exit process
-fi
-
-intraweb-helper-verify-settings() {
-  local SETTING PROBLEMS
-
-  for SETTING in $INTRAWEB_SETTINGS; do
-    if [[ -z "${!SETTING:-}" ]]; then
-      echoerr "Did not find expected setting: '${SETTING}'."
-      PROBLEMS=true
-    fi
-    if [[ "${PROBLEMS}" == true ]]; then
-      echoerrandexit "At least one parameter is not set. Try:\n\nintraweb init"
-    fi
-  done
-}
-
-[[ "${ACTION}" == init ]] || intraweb-helper-verify-settings
-
-# Process/set the association parameters.
-[[ -n "${ORGANIZATION:-}" ]] || ORGANIZATION="${INTRAWEB_DEFAULT_ORGANIZATION}"
-
-intraweb-helper-infer-associations() {
-  local SETTING NO_SETTING GCLOUD_PROPERTY
-  for SETTING in PROJECT REGION; do
-    NO_SETTING="NO_INFER_${SETTING}"
-    GCLOUD_PROPERTY="$(echo "${SETTING}" | tr '[:upper:]' '[:lower:]')"
-    case "${GCLOUD_PROPERTY}" in
-      region)
-        GCLOUD_PROPERTY="compute/${GCLOUD_PROPERTY}" ;;
-    esac
-
-    if [[ -z "${!SETTING:-}" ]] && [[ -z "${!NO_SETTING:-}" ]]; then
-      echo "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})"
-      eval "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})"
-      # Note the setting may remain undefined, and that's OK
-      [[ -z "${!SETTING:-}" ]] || echofmt "Inferred ${SETTING} '${!SETTING}' from active gcloud conf."
-    fi
-  done
-}
-intraweb-helper-infer-associations
-
-if [[ -n "${ASSUME_DEFAULTS}" ]]; then
-  # is this a new project?
-  [[ -n "${PROJECT:-}" ]] || PROJECT="${INTRAWEB_PROJECT_PREFIX}-intraweb"
-
-  [[ -n "${BUCKET}" ]] || BUCKET="${PROJECT}"
-
-  [[ -n "${APPLICATION_TITLE}" ]] || [[ -z "${INTRAWEB_COMPANY_NAME}" ]] \
-    || APPLICATION_TITLE="${INTRAWEB_COMPANY_NAME} Intraweb"
-
-  [[ -n "${SUPPORT_EMAIL}" ]] || [[ -z "${INTRAWEB_OAUTH_SUPPORT_EMAIL}" ]] || SUPPORT_EMAIL="${INTRAWEB_OAUTH_SUPPORT_EMAIL}"
-
-  echofmt "Running with default values..."
-fi
-
-case "${ACTION}" in
-  init|build|deploy|run)
-    intraweb-${ACTION} ;;
-  *)
-    usage-bad-action ;;# will exit process
-esac
