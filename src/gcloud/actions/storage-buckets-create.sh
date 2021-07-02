@@ -16,7 +16,7 @@ gcloud-storage-buckets-create() {
     PUBLIC: \
     -- "$@")"
   # set default and common processing
-  ensure-setting PROJECT
+  ensure-settings PROJECT
   gcloud-lib-common-options-check-access-and-report
   gcloud-lib-common-retry-options-processing
 

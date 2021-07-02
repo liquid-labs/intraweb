@@ -13,7 +13,7 @@ gcloud-app-create() {
     REGION= \
     -- "$@")"
   # set default and common processing
-  ensure-setting PROJECT
+  ensure-settings PROJECT
   gcloud-lib-common-options-check-access-and-report
 
   echofmt "Testing if app associated with '${PROJECT}' already exists..."

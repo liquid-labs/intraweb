@@ -1,7 +1,7 @@
 gcloud-projects-iap-oauth-setup() {
   # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
   eval "$(setSimpleOptions $(gcloud-lib-common-core-options-spec) APPLICATION_TITLE:t= SUPPORT_EMAIL:e= -- "$@")"
-  ensure-setting PROJECT
+  ensure-settings PROJECT
 
   local IAP_SERVICE='iap.googleapis.com'
   local IAP_STATE

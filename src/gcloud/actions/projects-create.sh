@@ -15,7 +15,7 @@ gcloud-projects-create() {
     $(gcloud-lib-common-create-named-options-spec) \
     -- "$@")"
   # set default and common processing
-  ensure-setting PROJECT
+  ensure-settings PROJECT
   gcloud-lib-common-options-check-access-and-report
   gcloud-lib-common-org-options-processing
   gcloud-lib-common-retry-options-processing

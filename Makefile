@@ -6,15 +6,23 @@ default: all
 
 NPM_BIN:=$(shell npm bin)
 BASH_ROLLUP:=$(NPM_BIN)/bash-rollup
-GOOGLE_SRC=$(shell find src/gcloud/actions src/gcloud/lib -name '*.sh')
-INTRAWEB_SRC=$(shell find src/intraweb -name '*.sh') $(GOOGLE_SRC)
-SOURCEABLE_BUNDLES:=gcloud-projects-create gcloud-projects-iap-oauth-setup gcloud-storage-buckets-create
+GOOGLE_LIBS:=$(shell find src/gcloud/lib -name '*.sh')
+GOOGLE_ACTIONS:=$(shell find src/gcloud/actions -name '*.sh')
+GOOGLE_SRC:=$(GOOGLE_LIBS) $(GOOGLE_ACTIONS)
+INTRAWEB_SRC:=$(shell find src/intraweb -name '*.sh') $(GOOGLE_SRC)
+SOURCEABLE_BUNDLES:=gcloud-projects-create \
+	gcloud-projects-iap-oauth-setup \
+	gcloud-storage-buckets-create \
+	gcloud-storage-buckets-configure
 DIST_BASE:=intraweb $(SOURCEABLE_BUNDLES)
 DIST_FILES:=$(patsubst %, dist/%.sh, $(DIST_BASE))
 APPENGINE_FILES:=$(shell find src/appengine -type f -not -name "package-lock.json" -not -path "*node_modules/*")
 HELLO_WORLD_WEB_FILES:=$(shell find src/test/hello-world-web -type f)
 
 OBJECTS = $(addprefix build/,$(addsuffix .o,$(FILES)))
+
+test:
+	echo $(SOURCEABLE_BUNDLES)
 
 all: $(DIST_FILES)
 
@@ -28,6 +36,7 @@ dist/:
 dist/intraweb.sh: src/intraweb/intraweb.sh dist/ $(INTRAWEB_SRC)
 	$(BASH_ROLLUP) $< $@
 
+# TODO: use 'gcloud-' on the 'actions' as well, then we can include the specific action and limit this to GOOGLE_LIBS
 $(patsubst %, dist/%.sh, $(SOURCEABLE_BUNDLES)): dist/%: src/gcloud/sources/% dist/ $(GOOGLE_SRC)
 	$(BASH_ROLLUP) $< $@
 
