@@ -1,3 +1,6 @@
 node_modules
+env-variables.yaml
+/.deploy-app
+/.deploy-content
 /yalc.lock
 /.yalc

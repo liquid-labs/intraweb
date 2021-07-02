@@ -24,12 +24,14 @@ eval "$(setSimpleOptions --script \
   APPLICATION_TITLE:t= \
   SUPPORT_EMAIL:e= \
   ASSUME_DEFAULTS: \
-  NO_INFER_PROJECT: \
-  NO_INFER_REGION: \
+  NO_DEPLOY_APP:A \
+  NO_DEPLOY_CONTENT:C \
   ORGANIZATION= \
   PROJECT= \
+  NO_INFER_PROJECT: \
   BUCKET= \
-  REGION= -- "$@")"
+  REGION= \
+  NO_INFER_REGION: -- "$@")"
 ACTION="${1:-}"
 if [[ -z "${ACTION}" ]]; then
   usage-bad-action # will exit process
@@ -68,7 +70,7 @@ intraweb-helper-infer-associations() {
       echo "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})"
       eval "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})"
       # Note the setting may remain undefined, and that's OK
-      [[ -z "${!SETTING:-}" ]] || echofmt "Inferred ${SETTING} '${PROJECT}' from active gcloud conf."
+      [[ -z "${!SETTING:-}" ]] || echofmt "Inferred ${SETTING} '${!SETTING}' from active gcloud conf."
     fi
   done
 }
@@ -77,6 +79,8 @@ intraweb-helper-infer-associations
 if [[ -n "${ASSUME_DEFAULTS}" ]]; then
   # is this a new project?
   [[ -n "${PROJECT:-}" ]] || PROJECT="${INTRAWEB_PROJECT_PREFIX}-intraweb"
+
+  [[ -n "${BUCKET}" ]] || BUCKET="${PROJECT}"
 
   [[ -n "${APPLICATION_TITLE}" ]] || [[ -z "${INTRAWEB_COMPANY_NAME}" ]] \
     || APPLICATION_TITLE="${INTRAWEB_COMPANY_NAME} Intraweb"

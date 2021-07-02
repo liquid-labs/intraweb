@@ -17,8 +17,7 @@ intraweb-build() {
     PROJECT_CREATE_OPTS="${PROJECT_CREATE_OPTS} --non-interactive --create-if-necessary"
     IAP_OPTS="${IAP_OPTS} --non-interactive"
     BUCKET_CREATE_OPTS="${BUCKET_CREATE_OPTS} --non-interactive --create-if-necessary"
-    [[ -n "${BUCKET}" ]] || [[ -z "${PROJECT}" ]] \
-      || BUCKET_CREATE_OPTS="${BUCKET_CREATE_OPTS} --bucket ${PROJECT}"
+    [[ -z "${BUCKET}" ]] || BUCKET_CREATE_OPTS="${BUCKET_CREATE_OPTS} --bucket ${BUCKET}"
     APP_CREATE_OPTS="${APP_CREATE_OPTS} --non-interactive --create-if-necessary"
   fi
   [[ -z "${APPLICATION_TITLE}" ]] || IAP_OPTS="${IAP_OPTS} --application-title '${APPLICATION_TITLE}'"
