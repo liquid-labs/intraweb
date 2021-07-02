@@ -36,5 +36,5 @@ intraweb-build() {
   gcloud-app-create ${APP_CREATE_OPTS}
 
   echo TODO
-  intraweb-update-web ${APP_CREATE_OPTS}
+  intraweb-deploy ${APP_CREATE_OPTS}
 }

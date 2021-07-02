@@ -87,7 +87,7 @@ if [[ -n "${ASSUME_DEFAULTS}" ]]; then
 fi
 
 case "${ACTION}" in
-  build|init|run|update-web)
+  init|build|deploy|run)
     intraweb-${ACTION} ;;
   *)
     usage-bad-action ;;# will exit process
