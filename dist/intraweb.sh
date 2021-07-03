@@ -827,7 +827,7 @@ usage-bad-action() {
 }
 # TODO: we have older gcloud code... somewhere that handles some of this stuff. Like, maybe dealing with the project 'name'
 
-# Utility to robustly create a new Google project. Since projects IDs are (bizarely) both global /and/ entirely
+# Utility to robustly create a new Google App. Since projects IDs are (bizarely) both global /and/ entirely
 # unreserved, there is often contention for project names and by default the utility will attempt to append random
 # numbers in order to locate a free name.
 #

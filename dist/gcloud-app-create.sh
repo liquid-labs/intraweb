@@ -741,36 +741,38 @@ fill-rand() {
     echo "${CONCAT}"
   fi
 }
-gcloud-storage-buckets-configure() {
+# TODO: we have older gcloud code... somewhere that handles some of this stuff. Like, maybe dealing with the project 'name'
+
+# Utility to robustly create a new Google App. Since projects IDs are (bizarely) both global /and/ entirely
+# unreserved, there is often contention for project names and by default the utility will attempt to append random
+# numbers in order to locate a free name.
+#
+# --non-interactive : causes flows that would otherwise result in a user prompt to instead halt with an error
+gcloud-app-create() {
+  # TODO: the '--non-interactive' setting would be nice to support globally as part of the prompt package
   eval "$(setSimpleOptions \
     $(gcloud-lib-common-core-options-spec) \
-    BUCKET= \
-    PUBLIC: \
-    PRIVATE: \
-    MAKE_UNIFORM: \
-    SKIP_UNIFORM_CHECK:U \
+    $(gcloud-lib-common-create-options-spec) \
+    REGION= \
     -- "$@")"
   # set default and common processing
+  ensure-settings PROJECT
   gcloud-lib-common-options-check-access-and-report
 
-  ensure-settings BUCKET
-
-  [[ -z "${PUBLIC}" ]] || [[- z "${PRIVATE}" ]] \
-    || echoerrandexit "'--public' and '--private' are incompatible. options."
-
-  if [[ -n "${UNIFORM}" ]]; then
-    gsutil uniformbucketlevelaccess set on gs://${BUCKET} \
-      || echoerrandexit "Failed to configure bucket '${BUCKET}' for public access."
-  elif [[ -z "${SKIP_UNIFORM_CHECK}" ]]; then # verify that uniformbucketlevelaccess is set
-    gsutil uniformbucketlevelaccess get gs://${BUCKET} | grep -qiE 'Enabled:\s *True' \
-      || echoerrandexit "It does not appear that bucket '${BUCKET}' is setup for uniform bucket level access. Try:\n$(basename "${0}") --make-uniform"
-  fi
-
-  if [[ -n "${PRIVATE}" ]]; then
-    gsutil iam ch -d 'allUsers:objectViewer' gs://${BUCKET} \
-      || echoerrandexit "Failed to configure bucket '${BUCKET}' for public access."
-  elif [[ -n "${PUBLIC}" ]]; then
-    gsutil iam ch 'allUsers:objectViewer' gs://${BUCKET} \
-      || echoerrandexit "Failed to configure bucket '${BUCKET}' for public access."
+  echofmt "Testing if app associated with '${PROJECT}' already exists..."
+  if ! gcloud app describe --project "${PROJECT}" >/dev/null 2>&1; then
+    [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
+      || echoerrandexit "App does not exist and 'create if necessary' option is not set while invoking gcloud-apps-create in non-interactive mode."
+    if [[ -n "${CREATE_IF_NECESSARY}" ]] \
+        || yes-no "App for '${PROJECT}' not found. Attempt to create?" 'Y'; then
+      local CREATE_OPTS
+      [[ -z "${PROJECT}" ]] || CREATE_OPTS="--project ${PROJECT}"
+      [[ -z "${REGION}" ]] || CREATE_OPTS="--region ${REGION}"
+      gcloud app create ${CREATE_OPTS} \
+        && echo "App created for project '${PROJECT}'" \
+        || echoerrandexit "Unable to create app. See app."
+    fi # CREATE_IF_NECESSARY
+  else # gcloud projects describe found something and the project exists
+    echofmt "App for project '${PROJECT}' already exists."
   fi
 }
