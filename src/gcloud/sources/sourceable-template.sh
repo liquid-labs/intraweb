@@ -3,4 +3,3 @@ import echoerr
 import prompt
 
 source ../lib/inc.sh
-source ../actions/storage-buckets-create.sh

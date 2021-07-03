@@ -1,5 +1,5 @@
-source ./app-create.sh
-source ./projects-create.sh
-source ./projects-iap-oauth-setup.sh
-source ./storage-buckets-configure.sh
-source ./storage-buckets-create.sh
+source ./gcloud-app-create.sh
+source ./gcloud-projects-create.sh
+source ./gcloud-projects-iap-oauth-setup.sh
+source ./gcloud-storage-buckets-configure.sh
+source ./gcloud-storage-buckets-create.sh
