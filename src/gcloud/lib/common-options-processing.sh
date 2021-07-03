@@ -2,7 +2,7 @@
 # on external varaiables.
 
 gcloud-lib-common-core-options-spec() {
-  echo 'PROJECT= NON_INTERACTIVE: NO_ACCOUNT_REPORT: SKIP_AUTH_CHECK:'
+  echo 'PROJECT= NON_INTERACTIVE: NO_ACCOUNT_REPORT: SKIP_AUTH_CHECK:A'
 }
 
 gcloud-lib-common-options-check-access-and-report() {
