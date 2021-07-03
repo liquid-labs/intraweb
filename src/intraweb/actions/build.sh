@@ -31,6 +31,10 @@ intraweb-build() {
   # --application_title|'Foo|Bar'|--support_email|'foo@bar.com'
   # as if the email literally began and ended with ticks and any title with spaces gets cut up.
   eval gcloud-projects-iap-oauth-setup ${IAP_OPTS}
-  gcloud-storage-buckets-create ${BUCKET_CREATE_OPTS}
   gcloud-app-create ${APP_CREATE_OPTS}
+  gcloud-storage-buckets-create ${BUCKET_CREATE_OPTS}
+  gcloud-storage-buckets-configure ${COMMON_OPTS} \
+    --bucket ${BUCKET} \
+    --make-uniform \
+    --reader "serviceAccount:${PROJECT}@appspot.gserviceaccount.com"
 }
