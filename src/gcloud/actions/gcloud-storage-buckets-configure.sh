@@ -60,7 +60,7 @@ gcloud-storage-buckets-configure() {
     unset SHOW
   fi
 
-  if [[ -n "${SHOW}" ]]; then
+  if [[ -n "${SHOW:-}" ]]; then
     gsutil iam get gs://${BUCKET}
   fi
 }
