@@ -752,8 +752,12 @@ intraweb-build() {
   # --application_title|'Foo|Bar'|--support_email|'foo@bar.com'
   # as if the email literally began and ended with ticks and any title with spaces gets cut up.
   eval gcloud-projects-iap-oauth-setup ${IAP_OPTS}
-  gcloud-storage-buckets-create ${BUCKET_CREATE_OPTS}
   gcloud-app-create ${APP_CREATE_OPTS}
+  gcloud-storage-buckets-create ${BUCKET_CREATE_OPTS}
+  gcloud-storage-buckets-configure ${COMMON_OPTS} \
+    --bucket ${BUCKET} \
+    --make-uniform \
+    --reader "serviceAccount:${PROJECT}@appspot.gserviceaccount.com"
 }
 intraweb-deploy() {
   local APP_DEPLOY_OPTS
@@ -767,16 +771,29 @@ intraweb-deploy() {
     gcloud app deploy ./src/appengine/app.yaml ${APP_DEPLOY_OPTS}
 }
 intraweb-init() {
-  local DIR
-  for DIR in INTRAWEB_DB INTRAWEB_CACHE; do
-    [[ -d "${!DIR}" ]] || mkdir "${!DIR}"
-  done
+  if [[ -z "${SITE}" ]] && [[ -n "${NON_INTERACTIVE}" ]]; then
+    echoerrandexit "Must specify site in invocation in non-interactive mode."
+  elif [[ -z "${SITE}" ]]; then
+    require-answer "Name (domain) of site to initialize?" SITE
+  fi
+
+  intraweb-init-lib-enusre-dirs "${SITE}"
   intraweb-init-lib-ensure-settings
 }
 
+intraweb-init-lib-enusre-dirs() {
+  local SITE="${1}"
+
+  local DIR
+  for DIR in "${INTRAWEB_DB}" "${INTRAWEB_SITES}" "${INTRAWEB_CACHE}" "${INTRAWEB_SITES}/${SITE}"; do
+    [[ -d "${DIR}" ]] \
+      || { echofmt "Creating '${DIR}'..."; mkdir -p "${DIR}"; }
+  done
+}
+
 intraweb-init-lib-ensure-settings() {
-  [[ -f "${INTRAWEB_SETTINGS_FILE}" ]] || touch "${INTRAWEB_SETTINGS_FILE}"
-  source "${INTRAWEB_SETTINGS_FILE}"
+  [[ -f "${INTRAWEB_SITE_SETTINGS}" ]] || touch "${INTRAWEB_SITE_SETTINGS}"
+  source "${INTRAWEB_SITE_SETTINGS}"
 
   local INTRAWEB_DEFAULT_ORGANIZATION_PROMPT='Default Organization—a number—to nest projects under?'
   local INTRAWEB_PROJECT_PREFIX_PROMPT='Default Google project prefix?'
@@ -793,10 +810,10 @@ intraweb-init-lib-ensure-settings() {
 }
 
 intraweb-init-lib-update-settings() {
-  ! [[ -f "${INTRAWEB_SETTINGS_FILE}" ]] || rm "${INTRAWEB_SETTINGS_FILE}"
+  ! [[ -f "${INTRAWEB_SITE_SETTINGS}" ]] || rm "${INTRAWEB_SITE_SETTINGS}"
   local SETTING
   for SETTING in ${INTRAWEB_SETTINGS}; do
-    echo "${SETTING}='${!SETTING}'" >> "${INTRAWEB_SETTINGS_FILE}"
+    echo "${SETTING}='${!SETTING}'" >> "${INTRAWEB_SITE_SETTINGS}"
   done
 }
 intraweb-run() {
@@ -807,16 +824,19 @@ ACTION=""
 ASSUME_DEFAULTS=""
 PROJECT=""
 ORGANIZATION=""
+INTRAWEB_SITE_SETTINGS=""
 # end cli option globals
 
 VALID_ACTIONS="init build deploy run"
 INTRAWEB_SETTINGS="INTRAWEB_DEFAULT_ORGANIZATION INTRAWEB_PROJECT_PREFIX INTRAWEB_COMPANY_NAME INTRAWEB_OAUTH_SUPPORT_EMAIL"
 
-INTRAWEB_DB="${HOME}/.intraweb"
+INTRAWEB_DB="${HOME}/.liq/intraweb"
+INTRAWEB_SITES="${INTRAWEB_DB}/sites"
 INTRAWEB_CACHE="${INTRAWEB_DB}/cache"
 INTRAWEB_TMP_ERROR="${INTRAWEB_CACHE}/temp-error.txt"
 
-INTRAWEB_SETTINGS_FILE="${INTRAWEB_DB}/settings.sh"
+# TODO: not currently used...
+# INTRAWEB_DEFAULT_SETTINGS="${INTRAWEB_DB}/default-site-settings.sh"
 usage() {
   echo "TODO"
 }
@@ -992,6 +1012,8 @@ gcloud-storage-buckets-configure() {
   eval "$(setSimpleOptions \
     $(gcloud-lib-common-core-options-spec) \
     BUCKET= \
+    READER:= \
+    DELETE: \
     PUBLIC: \
     PRIVATE: \
     MAKE_UNIFORM: \
@@ -1002,23 +1024,54 @@ gcloud-storage-buckets-configure() {
 
   ensure-settings BUCKET
 
-  [[ -z "${PUBLIC}" ]] || [[- z "${PRIVATE}" ]] \
-    || echoerrandexit "'--public' and '--private' are incompatible. options."
+  if [[ -n "${PUBLIC}" ]] && [[ -n "${PRIVATE}" ]]; then
+    echoerrandexit "'--public' and '--private' are incompatible. options."
+  fi
 
-  if [[ -n "${UNIFORM}" ]]; then
+  local SHOW=true
+
+  if [[ -n "${MAKE_UNIFORM}" ]]; then
+    [[ -z "${DELETE}" ]] || echoerrandexit "'--delete' and '--uniform' are incompatible."
     gsutil uniformbucketlevelaccess set on gs://${BUCKET} \
       || echoerrandexit "Failed to configure bucket '${BUCKET}' for public access."
+    unset SHOW
   elif [[ -z "${SKIP_UNIFORM_CHECK}" ]]; then # verify that uniformbucketlevelaccess is set
     gsutil uniformbucketlevelaccess get gs://${BUCKET} | grep -qiE 'Enabled:\s *True' \
       || echoerrandexit "It does not appear that bucket '${BUCKET}' is setup for uniform bucket level access. Try:\n$(basename "${0}") --make-uniform"
   fi
 
   if [[ -n "${PRIVATE}" ]]; then
+    [[ -z "${DELETE}" ]] || echoerrandexit "'--delete' and '--private' are incompatible."
     gsutil iam ch -d 'allUsers:objectViewer' gs://${BUCKET} \
+      && echofmt "Bucket '${BUCKET}' is now private." \
       || echoerrandexit "Failed to configure bucket '${BUCKET}' for public access."
+    unset SHOW
   elif [[ -n "${PUBLIC}" ]]; then
+    [[ -z "${DELETE}" ]] || echoerrandexit "'--delete' and '--public' are incompatible."
     gsutil iam ch 'allUsers:objectViewer' gs://${BUCKET} \
+      && echofmt "Bucket '${BUCKET}' is now publicly readable." \
       || echoerrandexit "Failed to configure bucket '${BUCKET}' for public access."
+    unset SHOW
+  fi
+
+  local OPTS=""
+  [[ -z "${DELETE}" ]] || OPTS="-d"
+
+  local CHANGE SPEC
+  if [[ -n "${READER}" ]]; then
+    [[ -n "${DELETE}" ]] && CHANGE="NOT readable" || CHANGE="readable"
+    for SPEC in ${READER}; do
+      local MEMBER
+      MEMEBR="$(echo "${SPEC}" | cut -d: -f2)"
+      gsutil iam ch ${OPTS} "${SPEC}:objectViewer" gs://${BUCKET} \
+        && echofmt "Bucket '${BUCKET}' is now ${CHANGE} by ${MEMBER}." \
+        || echoerrandexit "FAILED to update bucket '${BUCKET}' to ${CHANGE} by ${MEMBER}."
+    done
+    unset SHOW
+  fi
+
+  if [[ -n "${SHOW:-}" ]]; then
+    gsutil iam get gs://${BUCKET}
   fi
 }
 # TODO: we have older gcloud code... somewhere that handles some of this stuff. Like, maybe dealing with the project 'name'
@@ -1117,7 +1170,7 @@ gcloud-check-access() {
 # on external varaiables.
 
 gcloud-lib-common-core-options-spec() {
-  echo 'PROJECT= NON_INTERACTIVE: NO_ACCOUNT_REPORT: SKIP_AUTH_CHECK:'
+  echo 'PROJECT= NON_INTERACTIVE: NO_ACCOUNT_REPORT: SKIP_AUTH_CHECK:A'
 }
 
 gcloud-lib-common-options-check-access-and-report() {
@@ -1182,10 +1235,6 @@ fill-rand() {
 }
 # but NOT ./sources; ./sources contains exported 'sourceable' functions
 
-if [[ -f "${INTRAWEB_SETTINGS_FILE}" ]]; then
-  source "${INTRAWEB_SETTINGS_FILE}"
-fi
-
 # The first group are user visible config options. These will be automatically provided if '--assume-defaults' is
 # toggled.
 #
@@ -1194,6 +1243,7 @@ fi
 # The third group, starting at '--organization', affect associotions of any created components. These can typically
 # be gleaned from the active 'gcloud config', but can be overriden here.
 eval "$(setSimpleOptions --script \
+  SITE= \
   APPLICATION_TITLE:t= \
   SUPPORT_EMAIL:e= \
   ASSUME_DEFAULTS: \
@@ -1210,6 +1260,11 @@ if [[ -z "${ACTION}" ]]; then
   usage-bad-action # will exit process
 fi
 
+[[ -z "${SITE}" ]] || INTRAWEB_SITE_SETTINGS="${INTRAWEB_SITES}/${SITE}/settings.sh"
+if [[ -n "${SITE}" ]] && [[ -f "${INTRAWEB_SITE_SETTINGS}" ]]; then
+  source "${INTRAWEB_SITE_SETTINGS}"
+fi
+
 intraweb-helper-verify-settings() {
   local SETTING PROBLEMS
 
@@ -1224,7 +1279,7 @@ intraweb-helper-verify-settings() {
   done
 }
 
-[[ "${ACTION}" == init ]] || intraweb-helper-verify-settings
+[[ "${ACTION}" == init ]] || intraweb-helper-verify-settings "${SITE}"
 
 # Process/set the association parameters.
 [[ -n "${ORGANIZATION:-}" ]] || ORGANIZATION="${INTRAWEB_DEFAULT_ORGANIZATION}"
@@ -1240,7 +1295,6 @@ intraweb-helper-infer-associations() {
     esac
 
     if [[ -z "${!SETTING:-}" ]] && [[ -z "${!NO_SETTING:-}" ]]; then
-      echo "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})"
       eval "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})"
       # Note the setting may remain undefined, and that's OK
       [[ -z "${!SETTING:-}" ]] || echofmt "Inferred ${SETTING} '${!SETTING}' from active gcloud conf."
