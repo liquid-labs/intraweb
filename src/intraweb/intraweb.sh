@@ -9,10 +9,6 @@ import real_path
 
 source ./inc.sh
 
-if [[ -f "${INTRAWEB_SETTINGS_FILE}" ]]; then
-  source "${INTRAWEB_SETTINGS_FILE}"
-fi
-
 # The first group are user visible config options. These will be automatically provided if '--assume-defaults' is
 # toggled.
 #
@@ -21,6 +17,7 @@ fi
 # The third group, starting at '--organization', affect associotions of any created components. These can typically
 # be gleaned from the active 'gcloud config', but can be overriden here.
 eval "$(setSimpleOptions --script \
+  SITE= \
   APPLICATION_TITLE:t= \
   SUPPORT_EMAIL:e= \
   ASSUME_DEFAULTS: \
@@ -37,6 +34,11 @@ if [[ -z "${ACTION}" ]]; then
   usage-bad-action # will exit process
 fi
 
+[[ -z "${SITE}" ]] || INTRAWEB_SITE_SETTINGS="${INTRAWEB_SITES}/${SITE}/settings.sh"
+if [[ -n "${SITE}" ]] && [[ -f "${INTRAWEB_SITE_SETTINGS}" ]]; then
+  source "${INTRAWEB_SITE_SETTINGS}"
+fi
+
 intraweb-helper-verify-settings() {
   local SETTING PROBLEMS
 
@@ -51,7 +53,7 @@ intraweb-helper-verify-settings() {
   done
 }
 
-[[ "${ACTION}" == init ]] || intraweb-helper-verify-settings
+[[ "${ACTION}" == init ]] || intraweb-helper-verify-settings "${SITE}"
 
 # Process/set the association parameters.
 [[ -n "${ORGANIZATION:-}" ]] || ORGANIZATION="${INTRAWEB_DEFAULT_ORGANIZATION}"
