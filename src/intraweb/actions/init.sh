@@ -1,7 +1,7 @@
 intraweb-init() {
   local DIR
   for DIR in INTRAWEB_DB INTRAWEB_CACHE; do
-    [[ -d "${!DIR}" ]] || mkdir "${!DIR}"
+    [[ -d "${!DIR}" ]] || mkdir -p "${!DIR}"
   done
   intraweb-init-lib-ensure-settings
 }
