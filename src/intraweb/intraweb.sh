@@ -46,7 +46,7 @@ NO_DEPLOY_CONTENT:C"
 
 OPTION_GROUPS="INIT_OPTIONS DEPLOY_OPTIONS"
 
-eval "$(setSimpleOptions --script $(COMMON_OPTIONS) $(INIT_OPTIONS) $(DEPLOY_OPTIONS) -- "$@")"
+eval "$(setSimpleOptions --script ${COMMON_OPTIONS} ${INIT_OPTIONS} ${DEPLOY_OPTIONS} -- "$@")"
 ACTION="${1:-}"
 if [[ -z "${ACTION}" ]]; then
   usage-bad-action # will exit process
@@ -57,7 +57,7 @@ else
   OPTIONS_VAR="$(echo "${ACTION}" | tr '[[:lower:]]' '[[:upper:]]')_INIT"
   for OPTION_GROUP in ${OPTION_GROUPS}; do
     if [[ "${OPTIONS_VAR}" != "${OPTION_GROUP}" ]]; then
-      for OPTION in ${!OPTIONS_VAR}; do
+      [[ -z "${!OPTIONS_VAR:-}" ]] || for OPTION in ${!OPTIONS_VAR}; do
         OPTION_VAR=$(echo "${OPTION}" | sed 's/[^A-Z_]//g')
         [[ -z "${!OPTION_VAR}" ]] || {
           CLI_OPTION="$(echo "${!OPTION_VAR}" | tr '[[:upper:]]' '[[:lower:]]')"
@@ -74,15 +74,15 @@ fi
 INTRAWEB_SITE_SETTINGS="${INTRAWEB_SITES}/${SITE}/settings.sh"
 if [[ -f "${INTRAWEB_SITE_SETTINGS}" ]]; then
   source "${INTRAWEB_SITE_SETTINGS}"
-else
+elif [[ "${ACTION}" != 'create' ]]; then
   echoerrandexit "Did not find expected settings file for '${SITE}'. Try:\nintraweb create --site '${SITE}'"
 fi
 
 # Set the effective parameters from site settings if not set in command options.
-[[ -n "${ORGANIZATION:-}" ]] || ORGANIZATION="${INTRAWEB_SITE_ORGANIZATION}"
-[[ -n "${PROJECT:-}" ]] || PROJECT="${INTRAWEB_SITE_PROJECT}"
-[[ -n "${BUCKET:-}" ]] || BUCKET="${INTRAWEB_SITE_BUCKET}"
-[[ -n "${REGION:-}" ]] || REGION="${INTRAWEB_SITE_REGION}"
+[[ -n "${ORGANIZATION:-}" ]] || ORGANIZATION="${INTRAWEB_SITE_ORGANIZATION:-}"
+[[ -n "${PROJECT:-}" ]] || PROJECT="${INTRAWEB_SITE_PROJECT:-}"
+[[ -n "${BUCKET:-}" ]] || BUCKET="${INTRAWEB_SITE_BUCKET:-}"
+[[ -n "${REGION:-}" ]] || REGION="${INTRAWEB_SITE_REGION:-}"
 
 if [[ "${ACTION}" == create ]]; then
   intraweb-settings-infer-from-gcloud

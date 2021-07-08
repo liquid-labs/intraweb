@@ -23,7 +23,7 @@ intraweb-settings-infer-from-gcloud() {
     esac
 
     if [[ -z "${!SETTING:-}" ]] && [[ -z "${!NO_SETTING:-}" ]]; then
-      eval "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})"
+      eval "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})" || true
       # Note the setting may remain undefined, and that's OK
       [[ -z "${!SETTING:-}" ]] || echofmt "Inferred ${SETTING} '${!SETTING}' from active gcloud conf."
     fi
