@@ -21,35 +21,53 @@ import real_path
 
 source ./inc.sh
 
-# The first group are user visible config options. These will be automatically provided if '--assume-defaults' is
-# toggled.
-#
-# The second group, staarting at '--assume-defaults', affect the behavior of the app.
-#
-# The third group, starting at '--organization', affect associotions of any created components. These can typically
-# be gleaned from the active 'gcloud config', but can be overriden here.
-eval "$(setSimpleOptions --script \
-  SITE= \
-  APPLICATION_TITLE:t= \
-  SUPPORT_EMAIL:e= \
-  ASSUME_DEFAULTS: \
-  NO_DEPLOY_APP:A \
-  NO_DEPLOY_CONTENT:C \
-  ORGANIZATION= \
-  NO_INFER_ORGANIZATION: \
-  PROJECT= \
-  NO_INFER_PROJECT: \
-  BUCKET= \
-  REGION= \
-  NO_INFER_REGION: -- "$@")"
+COMMON_OPTIONS="SITE="
+
+# Options used by init to setup site data. Using these options with other actions will cause an error.
+INIT_OPTIONS="APPLICATION_TITLE:t= \
+SUPPORT_EMAIL:e= \
+ASSUME_DEFAULTS: \
+ORGANIZATION= \
+NO_INFER_ORGANIZATION: \
+PROJECT= \
+NO_INFER_PROJECT: \
+BUCKET= \
+REGION= \
+NO_INFER_REGION:"
+
+# Options specific to deploy.
+DEPLOY_OPTIONS="NO_DEPLOY_APP:A \
+NO_DEPLOY_CONTENT:C"
+
+OPTION_GROUPS="INIT_OPTIONS DEPLOY_OPTIONS"
+
+eval "$(setSimpleOptions --script $(COMMON_OPTIONS) $(INIT_OPTIONS) $(DEPLOY_OPTIONS) -- "$@")"
 ACTION="${1:-}"
 if [[ -z "${ACTION}" ]]; then
   usage-bad-action # will exit process
+else
+  OPTIONS_VAR="$(echo "${ACTION}" | tr '[[:lower:]]' '[[:upper:]]')_INIT"
+  for OPTION_GROUP in ${OPTION_GROUPS}; do
+    if [[ "${OPTIONS_VAR}" != "${OPTION_GROUP}" ]]; then
+      for OPTION in ${!OPTIONS_VAR}; do
+        OPTION_VAR=$(echo "${OPTION}" | sed 's/[^A-Z_]//g')
+        [[ -z "${!OPTION_VAR}" ]] || {
+          CLI_OPTION="$(echo "${!OPTION_VAR}" | tr '[[:upper:]]' '[[:lower:]]')"
+          echoerrandexit "Option '--${CLI_OPTION}' cannot be used with action '${ACTION}'."
+        }
+      done
+    fi
+  done
 fi
 
-[[ -z "${SITE}" ]] || INTRAWEB_SITE_SETTINGS="${INTRAWEB_SITES}/${SITE}/settings.sh"
-if [[ -n "${SITE}" ]] && [[ -f "${INTRAWEB_SITE_SETTINGS}" ]]; then
+# TODO: support a (possible) default site link.
+[[ -n "${SITE}" ]] || echoerrandexit "The '--site' option must be specified."
+
+INTRAWEB_SITE_SETTINGS="${INTRAWEB_SITES}/${SITE}/settings.sh"
+if [[ -f "${INTRAWEB_SITE_SETTINGS}" ]]; then
   source "${INTRAWEB_SITE_SETTINGS}"
+else
+  echoerrandexit "Did not find expected settings file for '${SITE}'. Try:\nintraweb init --site '${SITE}'"
 fi
 
 # Set the effective parameters from site settings if not set in command options.
