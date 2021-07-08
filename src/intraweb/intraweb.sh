@@ -56,7 +56,7 @@ intraweb-helper-verify-settings() {
 [[ "${ACTION}" == init ]] || intraweb-helper-verify-settings "${SITE}"
 
 # Process/set the association parameters.
-[[ -n "${ORGANIZATION:-}" ]] || ORGANIZATION="${INTRAWEB_DEFAULT_ORGANIZATION}"
+[[ -n "${ORGANIZATION:-}" ]] || ORGANIZATION="${INTRAWEB_SITE_ORGANIZATION}"
 
 intraweb-helper-infer-associations() {
   local SETTING NO_SETTING GCLOUD_PROPERTY
@@ -78,17 +78,40 @@ intraweb-helper-infer-associations() {
 intraweb-helper-infer-associations
 
 if [[ -n "${ASSUME_DEFAULTS}" ]]; then
+  echofmt "Setting assumable values..."
   # is this a new project?
-  [[ -n "${PROJECT:-}" ]] || PROJECT="${INTRAWEB_PROJECT_PREFIX}-intraweb"
+  [[ -n "${INTRAWEB_COMPANY_NAME}" ]] || {
+    # TODO: lowercase and '-' case whatever comes out of here... once we move this to node? At that point, we'll wanat # to use the 'project safe' version for the project and the raw version for the application title. (I'm assuming
+    # the display name can have spaces. It's 'liquid-labs.com' for LL, but I'm assuming that's just my convention.)
+    INTRAWEB_COMPANY_NAME="$(gcloud organizations describe ${ORGANIZATION} --format 'value(displayName)')"
+    # TODO (cont) for now, we'll just kill it if there's any disallowed characters
+    { [[ "${INTRAWEB_COMPANY_NAME}" != *' '* ]] && echofmt "Setting company name to '${INTRAWEB_COMPANY_NAME}'."; } \
+      || unset INTRAWEB_COMPANY_NAME
+  }
 
-  [[ -n "${BUCKET}" ]] || BUCKET="${PROJECT}"
+  # no project but we have a company name
+  [[ -n "${PROJECT:-}" ]] || [[ -z "${INTRAWEB_COMPANY_NAME}" ]] || {
+    PROJECT="${COMPANY_DISPLAY_NAME}-intraweb"
+    echofmt "Setting project ID to '${PROJECT}'."
+  }
 
-  [[ -n "${APPLICATION_TITLE}" ]] || [[ -z "${INTRAWEB_COMPANY_NAME}" ]] \
-    || APPLICATION_TITLE="${INTRAWEB_COMPANY_NAME} Intraweb"
+  # no application title, but we have a company name
+  [[ -n "${APPLICATION_TITLE}" ]] || [[ -z "${INTRAWEB_COMPANY_NAME}" ]] || {
+    APPLICATION_TITLE="${INTRAWEB_COMPANY_NAME} Intraweb"
+    echofmt "Setting application title to '${APPLICATION_TITLE}'."
+  }
 
-  [[ -n "${SUPPORT_EMAIL}" ]] || [[ -z "${INTRAWEB_OAUTH_SUPPORT_EMAIL}" ]] || SUPPORT_EMAIL="${INTRAWEB_OAUTH_SUPPORT_EMAIL}"
 
-  echofmt "Running with default values..."
+  # bucket ID is same as project ID if not set
+  [[ -n "${BUCKET}" ]] || [[ -z "${PROJECT}" ]] || {
+    BUCKET="${PROJECT}"
+    echofmt "Setting bucket ID to '${BUCKET}'."
+  }
+
+  [[ -n "${SUPPORT_EMAIL}" ]] || [[ -z "${INTRAWEB_OAUTH_SUPPORT_EMAIL}" ]] || {
+    SUPPORT_EMAIL="${INTRAWEB_OAUTH_SUPPORT_EMAIL}"
+    echofmt "Setting support email to '${SUPPORT_EMAIL}'."
+  }
 fi
 
 case "${ACTION}" in
