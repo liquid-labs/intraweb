@@ -1,15 +1,15 @@
-intraweb-init() {
+intraweb-create() {
   if [[ -z "${SITE}" ]] && [[ -n "${NON_INTERACTIVE}" ]]; then
     echoerrandexit "Must specify site in invocation in non-interactive mode."
   elif [[ -z "${SITE}" ]]; then
-    require-answer "Name (domain) of site to initialize?" SITE
+    require-answer "Name (domain) of site to create?" SITE
   fi
 
-  intraweb-init-lib-enusre-dirs "${SITE}"
-  intraweb-init-lib-ensure-settings
+  intraweb-create-lib-enusre-dirs "${SITE}"
+  intraweb-create-lib-ensure-settings
 }
 
-intraweb-init-lib-enusre-dirs() {
+intraweb-create-lib-enusre-dirs() {
   local SITE="${1}"
 
   local DIR
@@ -19,7 +19,7 @@ intraweb-init-lib-enusre-dirs() {
   done
 }
 
-intraweb-init-lib-ensure-settings() {
+intraweb-create-lib-ensure-settings() {
   [[ -f "${INTRAWEB_SITE_SETTINGS}" ]] || touch "${INTRAWEB_SITE_SETTINGS}"
   source "${INTRAWEB_SITE_SETTINGS}"
 

@@ -1,4 +1,4 @@
 source ./build.sh
 source ./deploy.sh
-source ./init.sh
+source ./create.sh
 source ./run.sh

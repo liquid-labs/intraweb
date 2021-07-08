@@ -6,7 +6,7 @@ ORGANIZATION=""
 INTRAWEB_SITE_SETTINGS=""
 # end cli option globals
 
-VALID_ACTIONS="init build deploy run"
+VALID_ACTIONS="create build deploy run update-settings"
 INTRAWEB_SITE_SETTINGS="INTRAWEB_SITE_ORGANIZATION \
 INTRAWEB_SITE_PROJECT \
 INTRAWEB_SITE_BUCKET \
