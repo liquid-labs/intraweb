@@ -70,29 +70,31 @@ else
   done
 fi
 
-# TODO: support a (possible) default site link.
-[[ -n "${SITE}" ]] || echoerrandexit "The '--site' option must be specified."
+if [[ "${ACTION}" != "list" ]]; then
+  # TODO: support a (possible) default site link.
+  [[ -n "${SITE}" ]] || echoerrandexit "The '--site' option must be specified."
 
-SITE_SETTINGS_FILE="${INTRAWEB_SITES}/${SITE}/settings.sh"
-if [[ -f "${SITE_SETTINGS_FILE}" ]]; then
-  source "${SITE_SETTINGS_FILE}"
-elif [[ "${ACTION}" != 'create' ]]; then
-  echoerrandexit "Did not find expected settings file for '${SITE}'. Try:\nintraweb create --site '${SITE}'"
-fi
+  SITE_SETTINGS_FILE="${INTRAWEB_SITES}/${SITE}/settings.sh"
+  if [[ -f "${SITE_SETTINGS_FILE}" ]]; then
+    source "${SITE_SETTINGS_FILE}"
+  elif [[ "${ACTION}" != 'create' ]]; then
+    echoerrandexit "Did not find expected settings file for '${SITE}'. Try:\nintraweb create --site '${SITE}'"
+  fi
 
-# Set the effective parameters from site settings if not set in command options.
-for SETTING in ${INTRAWEB_SETTINGS}; do
-  IW_SETTING="INTRAWEB_SITE_${SETTING}"
-  # If the setting isn't set, then we set it from the IW setting (which may also be blank)
-  [[ -n "${!SETTING:-}" ]] || eval "${SETTING}='${!IW_SETTING:-}'"
-done
+  # Set the effective parameters from site settings if not set in command options.
+  for SETTING in ${INTRAWEB_SETTINGS}; do
+    IW_SETTING="INTRAWEB_SITE_${SETTING}"
+    # If the setting isn't set, then we set it from the IW setting (which may also be blank)
+    [[ -n "${!SETTING:-}" ]] || eval "${SETTING}='${!IW_SETTING:-}'"
+  done
 
-if [[ "${ACTION}" != create ]]; then
-  intraweb-settings-verify-present
+  if [[ "${ACTION}" != create ]]; then
+    intraweb-settings-verify-present
+  fi
 fi
 
 case "${ACTION}" in
-  create|build|deploy|run)
+  create|list|build|deploy|run)
     intraweb-${ACTION} ;;
   *)
     usage-bad-action ;;# will exit process
