@@ -12,5 +12,19 @@
     "involvedProjects": [
       "@liquid-labs/intraweb"
     ]
+  },
+  {
+    "issues": [
+      "https://github.com/Liquid-Labs/intraweb/issues/4"
+    ],
+    "branch": "2021.07.08-zane@liquid-labs.com-fix_install",
+    "startTimestampLocal": "2021-07-08-1521 UTC",
+    "branchFrom": "b55892c114111b9749a8c91994aa56c04c75e101",
+    "description": "Fix install",
+    "workInitiator": "zane@liquid-labs.com",
+    "branchInitiator": "zane@liquid-labs.com",
+    "involvedProjects": [
+      "@liquid-labs/intraweb"
+    ]
   }
 ]
