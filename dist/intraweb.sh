@@ -811,8 +811,19 @@ intraweb-create() {
     require-answer "Name (domain) of site to create?" SITE
   fi
 
+  intraweb-settings-infer-from-gcloud
+  intraweb-settings-process-assumptions
+
   intraweb-create-lib-enusre-dirs "${SITE}"
   intraweb-create-lib-ensure-settings
+
+  # Reflect our effective values back into the saved settings
+  for SETTING in ${INTRAWEB_SETTINGS}; do
+    IW_SETTING="INTRAWEB_SITE_${SETTING}"
+    eval "${IW_SETTING}='${!SETTING:-}'" # may still be blank, but we'll catch that in ensure-settings
+  done
+
+  intraweb-settings-update-settings
 }
 
 intraweb-create-lib-enusre-dirs() {
@@ -826,8 +837,8 @@ intraweb-create-lib-enusre-dirs() {
 }
 
 intraweb-create-lib-ensure-settings() {
-  [[ -f "${INTRAWEB_SITE_SETTINGS}" ]] || touch "${INTRAWEB_SITE_SETTINGS}"
-  source "${INTRAWEB_SITE_SETTINGS}"
+  [[ -f "${SITE_SETTINGS_FILE}" ]] || touch "${SITE_SETTINGS_FILE}"
+  source "${SITE_SETTINGS_FILE}"
 
   local INTRAWEB_SITE_ORGANIZATION_PROMPT='Organization—a number—to nest projects under?'
   local INTRAWEB_SITE_PROJECT_PROMPT='Project (base) name?'
@@ -835,14 +846,26 @@ intraweb-create-lib-ensure-settings() {
   local INTRAWEB_SITE_REGION_PROMPT='Deploy region?'
   local INTRAWEB_SITE_SUPPORT_EMAIL_PROMPT='OAuth authentication support email?'
 
-  local SETTING PROMPT_VAR
-  for SETTING in ${INTRAWEB_SITE_SETTINGS}; do
-    PROMPT_VAR="${SETTING}_PROMPT"
-    eval require-answer --force "'${!PROMPT_VAR:=${SETTING}?}'" "${SETTING}" "'${!SETTING:-}'"
-    intraweb-settings-process-assumptions > /dev/null # TODO: set quiet instead
-  done
+  local SETTING PROMPT_VAR PROMPT DEFAULT_VAR DEFAULT
+  for SETTING in ${INTRAWEB_SETTINGS}; do
+    if [[ -z "${ASSUME_DEFAULTS}" ]] || [[ -z "${!SETTING:-}" ]]; then
+      [[ -z "${NON_INTERACTIVE}" ]] || echofmt "Could not determine value for '${SETTING}' in non-interactive mode."
 
-  intraweb-settings-update-settings
+      PROMPT_VAR="INTRAWEB_SITE_${SETTING}_PROMPT"
+      PROMPT="${!PROMPT_VAR:=${SETTING}?}"
+
+      DEFAULT="${!SETTING:-}"
+      if [[ -z "${DEFAULT:-}" ]]; then
+        DEFAULT_VAR="INTRAWEB_DEFAULT_${SETTING}"
+        DEFAULT="${!DEFAULT_VAR:-}"
+      fi
+
+      require-answer --force "${PROMPT}" ${SETTING} "${DEFAULT}"
+      eval "INTRAWEB_SITE_${SETTING}=${!SETTING}"
+
+      intraweb-settings-process-assumptions > /dev/null # TODO: set quiet instead
+    fi
+  done
 }
 intraweb-run() {
   :
@@ -852,15 +875,26 @@ ACTION=""
 ASSUME_DEFAULTS=""
 PROJECT=""
 ORGANIZATION=""
-INTRAWEB_SITE_SETTINGS=""
+SITE_SETTINGS_FILE=""
 # end cli option globals
 
 VALID_ACTIONS="create build deploy run update-settings"
-INTRAWEB_SITE_SETTINGS="INTRAWEB_SITE_ORGANIZATION \
-INTRAWEB_SITE_PROJECT \
-INTRAWEB_SITE_BUCKET \
-INTRAWEB_SITE_REGION \
-INTRAWEB_SITE_SUPPORT_EMAIL"
+INTRAWEB_SETTINGS="ORGANIZATION \
+PROJECT \
+BUCKET \
+REGION \
+APPLICATION_TITLE \
+SUPPORT_EMAIL"
+
+INTRAWEB_SITE_SETTINGS=''
+for SETTING in ${INTRAWEB_SETTINGS}; do
+  if [[ -z "${INTRAWEB_SITE_SETTINGS}" ]]; then
+    INTRAWEB_SITE_SETTINGS="INTRAWEB_SITE_${SETTING}"
+  else
+    INTRAWEB_SITE_SETTINGS="${INTRAWEB_SITE_SETTINGS} INTRAWEB_SITE_${SETTING}"
+  fi
+done
+INTRAWEB_DEFAULT_REGION='us-central1'
 
 INTRAWEB_DB="${HOME}/.liq/intraweb"
 INTRAWEB_SITES="${INTRAWEB_DB}/sites"
@@ -894,24 +928,39 @@ intraweb-settings-infer-from-gcloud() {
     esac
 
     if [[ -z "${!SETTING:-}" ]] && [[ -z "${!NO_SETTING:-}" ]]; then
-      eval "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})"
+      eval "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})" || true
+      eval "INTRAWEB_SITE_${SETTING}='${!SETTING}'"
       # Note the setting may remain undefined, and that's OK
       [[ -z "${!SETTING:-}" ]] || echofmt "Inferred ${SETTING} '${!SETTING}' from active gcloud conf."
     fi
   done
 }
 
+# Examines non-set values and attempts to infer default values. This will update the effective values (e.g.,
+# ORGANIZATION, PROJECT, etc.) as well as the 'INTRAWEB_SITE_*' values. We assume that the INTRAWEB_VALUES are not set
+# because if they were, then the effective value would have been set by this point.
 intraweb-settings-process-assumptions() {
   if [[ -n "${ASSUME_DEFAULTS}" ]]; then
     echofmt "Setting assumable values..."
+    if [[ -z "${ORGANIZATION}" ]]; then # let's see if they have access to just one
+      local POTENTIAL_IDS ID_COUNT
+      POTENTIAL_IDS="$(gcloud organizations list --format 'value(ID)')"
+      ID_COUNT=$(echo "${POTENTIAL_IDS}" | wc -l)
+      if (( ${ID_COUNT} == 1 )); then
+        ORGANIZATION=${POTENTIAL_IDS}
+        echofmt "Inferred organization '${ORGANIZATION}' from single access."
+      fi
+    fi
+
     # is this a new project?
+    local COMPANY_DISPLAY_NAME
     if [[ -z "${PROJECT}" ]]; then
-      local COMPANY_DISPLAY_NAME
       # TODO: lowercase and '-' case whatever comes out of here... once we move this to node? At that point, we'll wanat # to use the 'project safe' version for the project and the raw version for the application title. (I'm assuming
       # the display name can have spaces. It's 'liquid-labs.com' for LL, but I'm assuming that's just my convention.)
       COMPANY_DISPLAY_NAME="$(gcloud organizations describe ${ORGANIZATION} --format 'value(displayName)')"
       # TODO (cont) for now, we'll just kill it if there's any disallowed characters
-      [[ "${COMPANY_DISPLAY_NAME}" != *' '* ]] || unset COMPANY_DISPLAY_NAME
+      { [[ "${COMPANY_DISPLAY_NAME}" != *' '* ]] && echofmt "Found company name '${COMPANY_DISPLAY_NAME}'..."; } \
+        || unset COMPANY_DISPLAY_NAME
     fi
 
     # no project but we have a company name
@@ -941,10 +990,10 @@ intraweb-settings-process-assumptions() {
 }
 
 intraweb-settings-update-settings() {
-  ! [[ -f "${INTRAWEB_SITE_SETTINGS}" ]] || rm "${INTRAWEB_SITE_SETTINGS}"
+  ! [[ -f "${SITE_SETTINGS_FILE}" ]] || rm "${SITE_SETTINGS_FILE}"
   local SETTING
   for SETTING in ${INTRAWEB_SITE_SETTINGS}; do
-    echo "${SETTING}='${!SETTING}'" >> "${INTRAWEB_SITE_SETTINGS}"
+    echo "${SETTING}='${!SETTING}'" >> "${SITE_SETTINGS_FILE}"
   done
 }
 usage() {
@@ -1370,7 +1419,7 @@ NO_DEPLOY_CONTENT:C"
 
 OPTION_GROUPS="INIT_OPTIONS DEPLOY_OPTIONS"
 
-eval "$(setSimpleOptions --script $(COMMON_OPTIONS) $(INIT_OPTIONS) $(DEPLOY_OPTIONS) -- "$@")"
+eval "$(setSimpleOptions --script ${COMMON_OPTIONS} ${INIT_OPTIONS} ${DEPLOY_OPTIONS} -- "$@")"
 ACTION="${1:-}"
 if [[ -z "${ACTION}" ]]; then
   usage-bad-action # will exit process
@@ -1381,7 +1430,7 @@ else
   OPTIONS_VAR="$(echo "${ACTION}" | tr '[[:lower:]]' '[[:upper:]]')_INIT"
   for OPTION_GROUP in ${OPTION_GROUPS}; do
     if [[ "${OPTIONS_VAR}" != "${OPTION_GROUP}" ]]; then
-      for OPTION in ${!OPTIONS_VAR}; do
+      [[ -z "${!OPTIONS_VAR:-}" ]] || for OPTION in ${!OPTIONS_VAR}; do
         OPTION_VAR=$(echo "${OPTION}" | sed 's/[^A-Z_]//g')
         [[ -z "${!OPTION_VAR}" ]] || {
           CLI_OPTION="$(echo "${!OPTION_VAR}" | tr '[[:upper:]]' '[[:lower:]]')"
@@ -1395,23 +1444,21 @@ fi
 # TODO: support a (possible) default site link.
 [[ -n "${SITE}" ]] || echoerrandexit "The '--site' option must be specified."
 
-INTRAWEB_SITE_SETTINGS="${INTRAWEB_SITES}/${SITE}/settings.sh"
-if [[ -f "${INTRAWEB_SITE_SETTINGS}" ]]; then
-  source "${INTRAWEB_SITE_SETTINGS}"
-else
+SITE_SETTINGS_FILE="${INTRAWEB_SITES}/${SITE}/settings.sh"
+if [[ -f "${SITE_SETTINGS_FILE}" ]]; then
+  source "${SITE_SETTINGS_FILE}"
+elif [[ "${ACTION}" != 'create' ]]; then
   echoerrandexit "Did not find expected settings file for '${SITE}'. Try:\nintraweb create --site '${SITE}'"
 fi
 
 # Set the effective parameters from site settings if not set in command options.
-[[ -n "${ORGANIZATION:-}" ]] || ORGANIZATION="${INTRAWEB_SITE_ORGANIZATION}"
-[[ -n "${PROJECT:-}" ]] || PROJECT="${INTRAWEB_SITE_PROJECT}"
-[[ -n "${BUCKET:-}" ]] || BUCKET="${INTRAWEB_SITE_BUCKET}"
-[[ -n "${REGION:-}" ]] || REGION="${INTRAWEB_SITE_REGION}"
+for SETTING in ${INTRAWEB_SETTINGS}; do
+  IW_SETTING="INTRAWEB_SITE_${SETTING}"
+  # If the setting isn't set, then we set it from the IW setting (which may also be blank)
+  [[ -n "${!SETTING:-}" ]] || eval "${SETTING}='${!IW_SETTING:-}'"
+done
 
-if [[ "${ACTION}" == create ]]; then
-  intraweb-settings-infer-from-gcloud
-  intraweb-settings-process-assumptions
-else
+if [[ "${ACTION}" != create ]]; then
   intraweb-settings-verify-present
 fi
 
