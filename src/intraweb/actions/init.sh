@@ -24,13 +24,16 @@ intraweb-init-lib-ensure-settings() {
   source "${INTRAWEB_SITE_SETTINGS}"
 
   local INTRAWEB_SITE_ORGANIZATION_PROMPT='Organization—a number—to nest projects under?'
-  local INTRAWEB_SITE_COMPANY_NAME_PROMPT='Company name?'
+  local INTRAWEB_SITE_PROJECT_PROMPT='Project (base) name?'
+  local INTRAWEB_SITE_BUCKET_PROMPT='Bucket (base) name?'
+  local INTRAWEB_SITE_REGION_PROMPT='Deploy region?'
   local INTRAWEB_SITE_SUPPORT_EMAIL_PROMPT='OAuth authentication support email?'
 
   local SETTING PROMPT_VAR
   for SETTING in ${INTRAWEB_SITE_SETTINGS}; do
     PROMPT_VAR="${SETTING}_PROMPT"
     eval require-answer --force "'${!PROMPT_VAR:=${SETTING}?}'" "${SETTING}" "'${!SETTING:-}'"
+    intraweb-settings-process-assumptions > /dev/null # TODO: set quiet instead
   done
 
   intraweb-init-lib-update-settings
