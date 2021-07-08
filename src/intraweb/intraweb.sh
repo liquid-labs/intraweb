@@ -42,7 +42,7 @@ fi
 intraweb-helper-verify-settings() {
   local SETTING PROBLEMS
 
-  for SETTING in $INTRAWEB_SETTINGS; do
+  for SETTING in $INTRAWEB_SITE_SETTINGS; do
     if [[ -z "${!SETTING:-}" ]]; then
       echoerr "Did not find expected setting: '${SETTING}'."
       PROBLEMS=true

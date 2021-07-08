@@ -29,7 +29,7 @@ intraweb-init-lib-ensure-settings() {
   local INTRAWEB_OAUTH_SUPPORT_EMAIL_PROMPT='Default OAuth authentication support email?'
 
   local SETTING PROMPT_VAR
-  for SETTING in ${INTRAWEB_SETTINGS}; do
+  for SETTING in ${INTRAWEB_SITE_SETTINGS}; do
     PROMPT_VAR="${SETTING}_PROMPT"
     eval require-answer --force "'${!PROMPT_VAR:=${SETTING}?}'" "${SETTING}" "'${!SETTING:-}'"
   done
@@ -40,7 +40,7 @@ intraweb-init-lib-ensure-settings() {
 intraweb-init-lib-update-settings() {
   ! [[ -f "${INTRAWEB_SITE_SETTINGS}" ]] || rm "${INTRAWEB_SITE_SETTINGS}"
   local SETTING
-  for SETTING in ${INTRAWEB_SETTINGS}; do
+  for SETTING in ${INTRAWEB_SITE_SETTINGS}; do
     echo "${SETTING}='${!SETTING}'" >> "${INTRAWEB_SITE_SETTINGS}"
   done
 }
