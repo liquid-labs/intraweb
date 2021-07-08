@@ -41,7 +41,7 @@ intraweb-settings-process-assumptions() {
       COMPANY_DISPLAY_NAME="$(gcloud organizations describe ${ORGANIZATION} --format 'value(displayName)')"
       # TODO (cont) for now, we'll just kill it if there's any disallowed characters
       [[ "${COMPANY_DISPLAY_NAME}" != *' '* ]] || unset COMPANY_DISPLAY_NAME
-    }
+    fi
 
     # no project but we have a company name
     [[ -n "${PROJECT:-}" ]] || [[ -z "${COMPANY_DISPLAY_NAME}" ]] || {
