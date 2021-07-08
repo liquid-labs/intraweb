@@ -12,7 +12,7 @@ intraweb-settings-verify-present() {
   done
 }
 
-intraweb-settings-infer-from-gcloud() {
+intraweb-settings-infer-from-gcloud-config() {
   local SETTING NO_SETTING GCLOUD_PROPERTY
   for SETTING in ORGANIZATION PROJECT REGION; do
     NO_SETTING="NO_INFER_${SETTING}"
@@ -24,7 +24,6 @@ intraweb-settings-infer-from-gcloud() {
 
     if [[ -z "${!SETTING:-}" ]] && [[ -z "${!NO_SETTING:-}" ]]; then
       eval "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})" || true
-      eval "INTRAWEB_SITE_${SETTING}='${!SETTING}'"
       # Note the setting may remain undefined, and that's OK
       [[ -z "${!SETTING:-}" ]] || echofmt "Inferred ${SETTING} '${!SETTING}' from active gcloud conf."
     fi

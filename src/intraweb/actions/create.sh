@@ -5,7 +5,7 @@ intraweb-create() {
     require-answer "Name (domain) of site to create?" SITE
   fi
 
-  intraweb-settings-infer-from-gcloud
+  intraweb-settings-infer-from-gcloud-config
   intraweb-settings-process-assumptions
 
   intraweb-create-lib-enusre-dirs "${SITE}"
