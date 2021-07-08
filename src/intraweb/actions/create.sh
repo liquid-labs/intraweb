@@ -5,8 +5,19 @@ intraweb-create() {
     require-answer "Name (domain) of site to create?" SITE
   fi
 
+  intraweb-settings-infer-from-gcloud
+  intraweb-settings-process-assumptions
+
   intraweb-create-lib-enusre-dirs "${SITE}"
   intraweb-create-lib-ensure-settings
+
+  # Reflect our effective values back into the saved settings
+  for SETTING in ${INTRAWEB_SETTINGS}; do
+    IW_SETTING="INTRAWEB_SITE_${SETTING}"
+    eval "${IW_SETTING}='${!SETTING:-}'" # may still be blank, but we'll catch that in ensure-settings
+  done
+
+  intraweb-settings-update-settings
 }
 
 intraweb-create-lib-enusre-dirs() {
@@ -29,16 +40,24 @@ intraweb-create-lib-ensure-settings() {
   local INTRAWEB_SITE_REGION_PROMPT='Deploy region?'
   local INTRAWEB_SITE_SUPPORT_EMAIL_PROMPT='OAuth authentication support email?'
 
-  local SETTING PROMPT_VAR
-  for SETTING in ${INTRAWEB_SITE_SETTINGS}; do
+  local SETTING PROMPT_VAR PROMPT DEFAULT_VAR DEFAULT
+  for SETTING in ${INTRAWEB_SETTINGS}; do
     if [[ -z "${ASSUME_DEFAULTS}" ]] || [[ -z "${!SETTING:-}" ]]; then
       [[ -z "${NON_INTERACTIVE}" ]] || echofmt "Could not determine value for '${SETTING}' in non-interactive mode."
 
-      PROMPT_VAR="${SETTING}_PROMPT"
-      eval require-answer --force "'${!PROMPT_VAR:=${SETTING}?}'" "${SETTING}" "'${!SETTING:-}'"
+      PROMPT_VAR="INTRAWEB_SITE_${SETTING}_PROMPT"
+      PROMPT="${!PROMPT_VAR:=${SETTING}?}"
+
+      DEFAULT="${!SETTING:-}"
+      if [[ -z "${DEFAULT:-}" ]]; then
+        DEFAULT_VAR="INTRAWEB_DEFAULT_${SETTING}"
+        DEFAULT="${!DEFAULT_VAR:-}"
+      fi
+
+      require-answer --force "${PROMPT}" ${SETTING} "${DEFAULT}"
+      eval "INTRAWEB_SITE_${SETTING}=${!SETTING}"
+
       intraweb-settings-process-assumptions > /dev/null # TODO: set quiet instead
     fi
   done
-
-  intraweb-settings-update-settings
 }

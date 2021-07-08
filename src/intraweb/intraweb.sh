@@ -79,15 +79,13 @@ elif [[ "${ACTION}" != 'create' ]]; then
 fi
 
 # Set the effective parameters from site settings if not set in command options.
-[[ -n "${ORGANIZATION:-}" ]] || ORGANIZATION="${INTRAWEB_SITE_ORGANIZATION:-}"
-[[ -n "${PROJECT:-}" ]] || PROJECT="${INTRAWEB_SITE_PROJECT:-}"
-[[ -n "${BUCKET:-}" ]] || BUCKET="${INTRAWEB_SITE_BUCKET:-}"
-[[ -n "${REGION:-}" ]] || REGION="${INTRAWEB_SITE_REGION:-}"
+for SETTING in ${INTRAWEB_SETTINGS}; do
+  IW_SETTING="INTRAWEB_SITE_${SETTING}"
+  # If the setting isn't set, then we set it from the IW setting (which may also be blank)
+  [[ -n "${!SETTING:-}" ]] || eval "${SETTING}='${!IW_SETTING:-}'"
+done
 
-if [[ "${ACTION}" == create ]]; then
-  intraweb-settings-infer-from-gcloud
-  intraweb-settings-process-assumptions
-else
+if [[ "${ACTION}" != create ]]; then
   intraweb-settings-verify-present
 fi
 

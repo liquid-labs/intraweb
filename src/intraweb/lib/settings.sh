@@ -28,31 +28,34 @@ intraweb-settings-infer-from-gcloud() {
       # Note the setting may remain undefined, and that's OK
       [[ -z "${!SETTING:-}" ]] || echofmt "Inferred ${SETTING} '${!SETTING}' from active gcloud conf."
     fi
+  done
+}
 
-    if [[ -z "${ORGANIZATION}" ]] && [[ -n "${ASSUME_DEFAULTS}" ]]; then # let's see if they have access to just one
+# Examines non-set values and attempts to infer default values. This will update the effective values (e.g.,
+# ORGANIZATION, PROJECT, etc.) as well as the 'INTRAWEB_SITE_*' values. We assume that the INTRAWEB_VALUES are not set
+# because if they were, then the effective value would have been set by this point.
+intraweb-settings-process-assumptions() {
+  if [[ -n "${ASSUME_DEFAULTS}" ]]; then
+    echofmt "Setting assumable values..."
+    if [[ -z "${ORGANIZATION}" ]]; then # let's see if they have access to just one
       local POTENTIAL_IDS ID_COUNT
       POTENTIAL_IDS="$(gcloud organizations list --format 'value(ID)')"
       ID_COUNT=$(echo "${POTENTIAL_IDS}" | wc -l)
       if (( ${ID_COUNT} == 1 )); then
         ORGANIZATION=${POTENTIAL_IDS}
-        INTRAWEB_SITE_ORGANIZATION=${ORGANIZATION}
         echofmt "Inferred organization '${ORGANIZATION}' from single access."
       fi
     fi
-  done
-}
 
-intraweb-settings-process-assumptions() {
-  if [[ -n "${ASSUME_DEFAULTS}" ]]; then
-    echofmt "Setting assumable values..."
     # is this a new project?
+    local COMPANY_DISPLAY_NAME
     if [[ -z "${PROJECT}" ]]; then
-      local COMPANY_DISPLAY_NAME
       # TODO: lowercase and '-' case whatever comes out of here... once we move this to node? At that point, we'll wanat # to use the 'project safe' version for the project and the raw version for the application title. (I'm assuming
       # the display name can have spaces. It's 'liquid-labs.com' for LL, but I'm assuming that's just my convention.)
       COMPANY_DISPLAY_NAME="$(gcloud organizations describe ${ORGANIZATION} --format 'value(displayName)')"
       # TODO (cont) for now, we'll just kill it if there's any disallowed characters
-      [[ "${COMPANY_DISPLAY_NAME}" != *' '* ]] || unset COMPANY_DISPLAY_NAME
+      { [[ "${COMPANY_DISPLAY_NAME}" != *' '* ]] && echofmt "Found company name '${COMPANY_DISPLAY_NAME}'..."; } \
+        || unset COMPANY_DISPLAY_NAME
     fi
 
     # no project but we have a company name
@@ -84,7 +87,7 @@ intraweb-settings-process-assumptions() {
 intraweb-settings-update-settings() {
   ! [[ -f "${SITE_SETTINGS_FILE}" ]] || rm "${SITE_SETTINGS_FILE}"
   local SETTING
-  for SETTING in ${SITE_SETTINGS_FILE}; do
+  for SETTING in ${INTRAWEB_SITE_SETTINGS}; do
     echo "${SETTING}='${!SETTING}'" >> "${SITE_SETTINGS_FILE}"
   done
 }
