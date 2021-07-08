@@ -31,7 +31,7 @@ intraweb-create-lib-ensure-settings() {
 
   local SETTING PROMPT_VAR
   for SETTING in ${INTRAWEB_SITE_SETTINGS}; do
-    if [[ -z "${ASSUME_DEFAULTS}" ]] || [[ -z "${!SETTING}" ]]; then
+    if [[ -z "${ASSUME_DEFAULTS}" ]] || [[ -z "${!SETTING:-}" ]]; then
       [[ -z "${NON_INTERACTIVE}" ]] || echofmt "Could not determine value for '${SETTING}' in non-interactive mode."
 
       PROMPT_VAR="${SETTING}_PROMPT"
