@@ -24,8 +24,20 @@ intraweb-settings-infer-from-gcloud() {
 
     if [[ -z "${!SETTING:-}" ]] && [[ -z "${!NO_SETTING:-}" ]]; then
       eval "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})" || true
+      eval "INTRAWEB_SITE_${SETTING}='${!SETTING}'"
       # Note the setting may remain undefined, and that's OK
       [[ -z "${!SETTING:-}" ]] || echofmt "Inferred ${SETTING} '${!SETTING}' from active gcloud conf."
+    fi
+
+    if [[ -z "${ORGANIZATION}" ]] && [[ -n "${ASSUME_DEFAULTS}" ]]; then # let's see if they have access to just one
+      local POTENTIAL_IDS ID_COUNT
+      POTENTIAL_IDS="$(gcloud organizations list --format 'value(ID)')"
+      ID_COUNT=$(echo "${POTENTIAL_IDS}" | wc -l)
+      if (( ${ID_COUNT} == 1 )); then
+        ORGANIZATION=${POTENTIAL_IDS}
+        INTRAWEB_SITE_ORGANIZATION=${ORGANIZATION}
+        echofmt "Inferred organization '${ORGANIZATION}' from single access."
+      fi
     fi
   done
 }
@@ -70,9 +82,9 @@ intraweb-settings-process-assumptions() {
 }
 
 intraweb-settings-update-settings() {
-  ! [[ -f "${INTRAWEB_SITE_SETTINGS}" ]] || rm "${INTRAWEB_SITE_SETTINGS}"
+  ! [[ -f "${SITE_SETTINGS_FILE}" ]] || rm "${SITE_SETTINGS_FILE}"
   local SETTING
-  for SETTING in ${INTRAWEB_SITE_SETTINGS}; do
-    echo "${SETTING}='${!SETTING}'" >> "${INTRAWEB_SITE_SETTINGS}"
+  for SETTING in ${SITE_SETTINGS_FILE}; do
+    echo "${SETTING}='${!SETTING}'" >> "${SITE_SETTINGS_FILE}"
   done
 }

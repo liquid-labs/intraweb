@@ -3,7 +3,7 @@ ACTION=""
 ASSUME_DEFAULTS=""
 PROJECT=""
 ORGANIZATION=""
-INTRAWEB_SITE_SETTINGS=""
+SITE_SETTINGS_FILE=""
 # end cli option globals
 
 VALID_ACTIONS="create build deploy run update-settings"

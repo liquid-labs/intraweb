@@ -71,9 +71,9 @@ fi
 # TODO: support a (possible) default site link.
 [[ -n "${SITE}" ]] || echoerrandexit "The '--site' option must be specified."
 
-INTRAWEB_SITE_SETTINGS="${INTRAWEB_SITES}/${SITE}/settings.sh"
-if [[ -f "${INTRAWEB_SITE_SETTINGS}" ]]; then
-  source "${INTRAWEB_SITE_SETTINGS}"
+SITE_SETTINGS_FILE="${INTRAWEB_SITES}/${SITE}/settings.sh"
+if [[ -f "${SITE_SETTINGS_FILE}" ]]; then
+  source "${SITE_SETTINGS_FILE}"
 elif [[ "${ACTION}" != 'create' ]]; then
   echoerrandexit "Did not find expected settings file for '${SITE}'. Try:\nintraweb create --site '${SITE}'"
 fi

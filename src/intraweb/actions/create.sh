@@ -20,8 +20,8 @@ intraweb-create-lib-enusre-dirs() {
 }
 
 intraweb-create-lib-ensure-settings() {
-  [[ -f "${INTRAWEB_SITE_SETTINGS}" ]] || touch "${INTRAWEB_SITE_SETTINGS}"
-  source "${INTRAWEB_SITE_SETTINGS}"
+  [[ -f "${SITE_SETTINGS_FILE}" ]] || touch "${SITE_SETTINGS_FILE}"
+  source "${SITE_SETTINGS_FILE}"
 
   local INTRAWEB_SITE_ORGANIZATION_PROMPT='Organization—a number—to nest projects under?'
   local INTRAWEB_SITE_PROJECT_PROMPT='Project (base) name?'
@@ -31,9 +31,11 @@ intraweb-create-lib-ensure-settings() {
 
   local SETTING PROMPT_VAR
   for SETTING in ${INTRAWEB_SITE_SETTINGS}; do
-    PROMPT_VAR="${SETTING}_PROMPT"
-    eval require-answer --force "'${!PROMPT_VAR:=${SETTING}?}'" "${SETTING}" "'${!SETTING:-}'"
-    intraweb-settings-process-assumptions > /dev/null # TODO: set quiet instead
+    if [[ -z "${ASSUME_DEFAULTS}"]] || [[ -z "${!SETTING}" ]]; then
+      PROMPT_VAR="${SETTING}_PROMPT"
+      eval require-answer --force "'${!PROMPT_VAR:=${SETTING}?}'" "${SETTING}" "'${!SETTING:-}'"
+      intraweb-settings-process-assumptions > /dev/null # TODO: set quiet instead
+    fi
   done
 
   intraweb-settings-update-settings
