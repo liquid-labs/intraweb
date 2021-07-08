@@ -21,7 +21,7 @@ import real_path
 
 source ./inc.sh
 
-COMMON_OPTIONS="SITE="
+COMMON_OPTIONS="SITE= NON_INTERACTIVE:"
 
 # Options used by init to setup site data. Using these options with other actions will cause an error.
 INIT_OPTIONS="APPLICATION_TITLE:t= \
@@ -35,8 +35,13 @@ BUCKET= \
 REGION= \
 NO_INFER_REGION:"
 
+BUILD_OPTIONS="CREATE_IF_NECESSARY \
+NO_RETRY_NAMES: \
+RETRY_COUNT:="
+
 # Options specific to deploy.
-DEPLOY_OPTIONS="NO_DEPLOY_APP:A \
+DEPLOY_OPTIONS="CONFIRM: \
+NO_DEPLOY_APP:A \
 NO_DEPLOY_CONTENT:C"
 
 OPTION_GROUPS="INIT_OPTIONS DEPLOY_OPTIONS"

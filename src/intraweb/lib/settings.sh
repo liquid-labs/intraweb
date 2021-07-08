@@ -68,3 +68,11 @@ intraweb-settings-process-assumptions() {
     }
   fi
 }
+
+intraweb-settings-update-settings() {
+  ! [[ -f "${INTRAWEB_SITE_SETTINGS}" ]] || rm "${INTRAWEB_SITE_SETTINGS}"
+  local SETTING
+  for SETTING in ${INTRAWEB_SITE_SETTINGS}; do
+    echo "${SETTING}='${!SETTING}'" >> "${INTRAWEB_SITE_SETTINGS}"
+  done
+}

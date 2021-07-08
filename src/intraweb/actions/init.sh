@@ -36,13 +36,5 @@ intraweb-init-lib-ensure-settings() {
     intraweb-settings-process-assumptions > /dev/null # TODO: set quiet instead
   done
 
-  intraweb-init-lib-update-settings
-}
-
-intraweb-init-lib-update-settings() {
-  ! [[ -f "${INTRAWEB_SITE_SETTINGS}" ]] || rm "${INTRAWEB_SITE_SETTINGS}"
-  local SETTING
-  for SETTING in ${INTRAWEB_SITE_SETTINGS}; do
-    echo "${SETTING}='${!SETTING}'" >> "${INTRAWEB_SITE_SETTINGS}"
-  done
+  intraweb-settings-update-settings
 }
