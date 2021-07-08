@@ -12,17 +12,26 @@ intraweb-settings-verify-present() {
   done
 }
 
+intraweb-setting-infer-gcloud-property-scope() {
+  local GCLOUD_PROPERTY="${1}"
+
+  GCLOUD_PROPERTY="$(echo "${GCLOUD_PROPERTY}" | tr '[:upper:]' '[:lower:]')"
+  case "${GCLOUD_PROPERTY}" in
+    region)
+      GCLOUD_PROPERTY="compute/${GCLOUD_PROPERTY}" ;;
+  esac
+
+  echo "${GCLOUD_PROPERTY}"
+}
+
 intraweb-settings-infer-from-gcloud-config() {
   local SETTING NO_SETTING GCLOUD_PROPERTY
   for SETTING in ORGANIZATION PROJECT REGION; do
     NO_SETTING="NO_INFER_${SETTING}"
-    GCLOUD_PROPERTY="$(echo "${SETTING}" | tr '[:upper:]' '[:lower:]')"
-    case "${GCLOUD_PROPERTY}" in
-      region)
-        GCLOUD_PROPERTY="compute/${GCLOUD_PROPERTY}" ;;
-    esac
 
     if [[ -z "${!SETTING:-}" ]] && [[ -z "${!NO_SETTING:-}" ]]; then
+      GCLOUD_PROPERTY="$(intraweb-setting-infer-gcloud-property-scope "${SETTING}")"
+
       eval "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})" || true
       # Note the setting may remain undefined, and that's OK
       [[ -z "${!SETTING:-}" ]] || echofmt "Inferred ${SETTING} '${!SETTING}' from active gcloud conf."
