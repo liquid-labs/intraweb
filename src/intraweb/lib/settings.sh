@@ -26,7 +26,7 @@ intraweb-setting-infer-gcloud-property-scope() {
 
 intraweb-settings-infer-from-gcloud-config() {
   local SETTING NO_SETTING GCLOUD_PROPERTY
-  for SETTING in ORGANIZATION PROJECT REGION; do
+  for SETTING in ${INTRAWEB_GCLOUD_PROPERTIES}; do
     NO_SETTING="NO_INFER_${SETTING}"
 
     if [[ -z "${!SETTING:-}" ]] && [[ -z "${!NO_SETTING:-}" ]]; then

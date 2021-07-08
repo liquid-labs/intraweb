@@ -18,6 +18,7 @@ intraweb-create() {
   done
 
   intraweb-settings-update-settings
+  intraweb-create-helper-udpate-gcloud
 }
 
 intraweb-create-lib-enusre-dirs() {
@@ -60,4 +61,21 @@ intraweb-create-lib-ensure-settings() {
       intraweb-settings-process-assumptions > /dev/null # TODO: set quiet instead
     fi
   done
+}
+
+intraweb-create-helper-udpate-gcloud() {
+  if [[ -z "${NO_UPDATE_GCLOUD_CONF:-}" ]]; then
+    local SETTING GCLOUD_VALUE
+    for SETTING in ${INTRAWEB_GCLOUD_PROPERTIES}; do
+
+      if [[ -n "${!SETTING:-}" ]]; then
+        GCLOUD_PROPERTY="$(intraweb-setting-infer-gcloud-property-scope "${SETTING}")"
+        GCLOUD_VALUE="$(gcloud config get-value ${GCLOUD_PROPERTY})"
+        if [[ -z "${GCLOUD_VALUE}" ]] || [[ -n "${FORCE_UPDATE_GCLOUD_CONF}" ]]; then
+          gcloud config set ${GCLOUD_PROPERTY} "${!SETTING}" \
+            && echofmt "Set gcloud conf '${GCLOUD_PROPERTY}' to '${!SETTING}'"
+        fi
+      fi
+    done
+  fi
 }
