@@ -23,9 +23,9 @@ intraweb-init-lib-ensure-settings() {
   [[ -f "${INTRAWEB_SITE_SETTINGS}" ]] || touch "${INTRAWEB_SITE_SETTINGS}"
   source "${INTRAWEB_SITE_SETTINGS}"
 
-  local INTRAWEB_SITE_ORGANIZATION_PROMPT='Default Organization—a number—to nest projects under?'
-  local INTRAWEB_COMPANY_NAME_PROMPT='Default company name?'
-  local INTRAWEB_OAUTH_SUPPORT_EMAIL_PROMPT='Default OAuth authentication support email?'
+  local INTRAWEB_SITE_ORGANIZATION_PROMPT='Organization—a number—to nest projects under?'
+  local INTRAWEB_COMPANY_NAME_PROMPT='Company name?'
+  local INTRAWEB_OAUTH_SUPPORT_EMAIL_PROMPT='OAuth authentication support email?'
 
   local SETTING PROMPT_VAR
   for SETTING in ${INTRAWEB_SITE_SETTINGS}; do
