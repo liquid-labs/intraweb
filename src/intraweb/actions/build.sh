@@ -36,6 +36,8 @@ intraweb-build() {
     --bucket ${BUCKET} \
     --make-uniform \
     --reader "serviceAccount:${PROJECT}@appspot.gserviceaccount.com"
+
+  echofmt "\n${bold}Congragutalions!${reset} Your intraweb infrastructure is now built. To deploy content to the site, run:\n\nintraweb --site ${SITE} deploy\n"
 }
 
 # This is necessary to update the 'project' setting if things change.
