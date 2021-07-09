@@ -24,7 +24,7 @@ source ./inc.sh
 COMMON_OPTIONS="SITE= NON_INTERACTIVE:"
 
 # Options used by add to setup site data. Using these options with other actions will cause an error.
-INIT_OPTIONS="APPLICATION_TITLE:t= \
+ADD_OPTIONS="APPLICATION_TITLE:t= \
 SUPPORT_EMAIL:e= \
 ASSUME_DEFAULTS: \
 ORGANIZATION= \
@@ -46,9 +46,9 @@ DEPLOY_OPTIONS="CONFIRM: \
 NO_DEPLOY_APP:A \
 NO_DEPLOY_CONTENT:C"
 
-OPTION_GROUPS="INIT_OPTIONS DEPLOY_OPTIONS"
+OPTION_GROUPS="ADD_OPTIONS BUILD_OPTIONS DEPLOY_OPTIONS"
 
-eval "$(setSimpleOptions --script ${COMMON_OPTIONS} ${INIT_OPTIONS} ${BUILD_OPTIONS} ${DEPLOY_OPTIONS} -- "$@")"
+eval "$(setSimpleOptions --script ${COMMON_OPTIONS} ${ADD_OPTIONS} ${BUILD_OPTIONS} ${DEPLOY_OPTIONS} -- "$@")"
 ACTION="${1:-}"
 if [[ -z "${ACTION}" ]]; then
   usage-bad-action # will exit process
