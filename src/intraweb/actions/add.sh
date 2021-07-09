@@ -38,6 +38,7 @@ intraweb-add-lib-ensure-settings() {
   local INTRAWEB_SITE_ORGANIZATION_PROMPT='Organization—a number—to nest projects under?'
   local INTRAWEB_SITE_PROJECT_PROMPT='Project (base) name?'
   local INTRAWEB_SITE_BUCKET_PROMPT='Bucket (base) name?'
+  local INTRAWEB_SITE_APPLICATION_TITLE_PROMPT='Application title?'
   local INTRAWEB_SITE_REGION_PROMPT='Deploy region?'
   local INTRAWEB_SITE_SUPPORT_EMAIL_PROMPT='OAuth authentication support email?'
 
