@@ -7,7 +7,7 @@ intraweb-settings-verify-present() {
       PROBLEMS=true
     fi
     if [[ "${PROBLEMS}" == true ]]; then
-      echoerrandexit "At least one parameter is not set. Try:\n\nintraweb update-settings"
+      echoerrandexit "At least one parameter is not set. Try:\n\nintraweb update-settings --site ${SITE}"
     fi
   done
 }
