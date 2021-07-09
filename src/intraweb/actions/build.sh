@@ -9,7 +9,7 @@ intraweb-build() {
 
   local FINAL_PROJECT_NAME FINAL_BUCKET_NAME
 
-  gcloud-projects-create ${PROJECT_CREATE_OPTS} --id-output-var FINAL_BUCKET_NAME
+  gcloud-projects-create ${PROJECT_CREATE_OPTS} --id-output-var FINAL_PROJECT_NAME
   if [[ "${FINAL_PROJECT_NAME}" != "${PROJECT}" ]]; then
     PROJECT="${FINAL_PROJECT_NAME}"
     INTRAWEB_SITE_PROJECT="${PROJECT}"
@@ -43,7 +43,7 @@ intraweb-build-helper-update-settings() {
   # notice, we manipulate the super-funcs local vars directly.
   COMMON_OPTS="--skip-auth-check --project ${PROJECT}"
   [[ -z "${NON_INTERACTIVE}" ]] || COMMON_OPTS="${COMMON_OPTS} --non-interactive"
-  PROJECT_CREATE_OPTS="${COMMON_OPTS} --organization ${ORGANIZATION} --output"
+  PROJECT_CREATE_OPTS="${COMMON_OPTS} --organization ${ORGANIZATION}"
   IAP_OPTS="${COMMON_OPTS}"
   BUCKET_CREATE_OPTS="${COMMON_OPTS}"
   APP_CREATE_OPTS="${COMMON_OPTS}"
