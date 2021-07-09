@@ -40,5 +40,19 @@
     "involvedProjects": [
       "@liquid-labs/intraweb"
     ]
+  },
+  {
+    "issues": [
+      "https://github.com/Liquid-Labs/intraweb/issues/13"
+    ],
+    "branch": "2021.07.09-zane@liquid-labs.com-add_content_source",
+    "startTimestampLocal": "2021-07-09-1638 UTC",
+    "branchFrom": "0b1485c19c91dd25253d451bb3a93bc0495d705c",
+    "description": "Add content source",
+    "workInitiator": "zane@liquid-labs.com",
+    "branchInitiator": "zane@liquid-labs.com",
+    "involvedProjects": [
+      "@liquid-labs/intraweb"
+    ]
   }
 ]
