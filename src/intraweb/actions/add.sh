@@ -41,14 +41,20 @@ intraweb-add-lib-ensure-settings() {
   local INTRAWEB_SITE_APPLICATION_TITLE_PROMPT='Application title?'
   local INTRAWEB_SITE_REGION_PROMPT='Deploy region?'
   local INTRAWEB_SITE_SUPPORT_EMAIL_PROMPT='OAuth authentication support email?'
+  local INTRAWEB_SITE_CONTENT_SOURCE_PROMPT='Absolute path to content source root?'
+  # TODO: for a later day...
+  # local INTRAWEB_SITE_CONTENT_SOURCE_TRANSFORM='real_path'
+  local INTRAWEB_SITE_CONTENT_SOURCE_VERIFY='test -d'
 
-  local SETTING PROMPT_VAR PROMPT DEFAULT_VAR DEFAULT
+  local SETTING PROMPT_VAR PROMPT DEFAULT_VAR DEFAULT # TRANSFORM_VAR VERIFY_VAR
   for SETTING in ${INTRAWEB_SETTINGS}; do
     if [[ -z "${ASSUME_DEFAULTS}" ]] || [[ -z "${!SETTING:-}" ]]; then
       [[ -z "${NON_INTERACTIVE}" ]] || echofmt "Could not determine value for '${SETTING}' in non-interactive mode."
 
       PROMPT_VAR="INTRAWEB_SITE_${SETTING}_PROMPT"
       PROMPT="${!PROMPT_VAR:=${SETTING}?}"
+      TRANSFORM_VAR="INTRAWEB_SITE_${SETTING}_TRANSFORM"
+      VERIFY_VAR="INTRAWEB_SITE_${SETTING}_VERIFY"
 
       DEFAULT="${!SETTING:-}"
       if [[ -z "${DEFAULT:-}" ]]; then
@@ -57,7 +63,20 @@ intraweb-add-lib-ensure-settings() {
       fi
 
       require-answer --force "${PROMPT}" ${SETTING} "${DEFAULT}"
-      eval "INTRAWEB_SITE_${SETTING}=${!SETTING}"
+
+      eval "INTRAWEB_SITE_${SETTING}='${!SETTING}'"
+
+      # TODO: for a later day...
+      # if [[ -n "${!TRANSFORM_VAR:-}" ]]; then
+      #  local ORIG_VALUE="${!SETTING}"
+      #  eval "${SETTING}=\"\$(${!TRANSFORM_VAR} '${!SETTING}')\""
+      #  [[ "${ORIG_VALUE}" == "${!SETTING}" ]] || echofmt "Transformed value to: ${!SETTING}"
+      # fi
+
+      if [[ -n "${!VERIFY_VAR:-}" ]]; then
+        local VERIFICATION="${!VERIFY_VAR} '${!SETTING}'"
+        eval "${VERIFICATION}" || echoerrandexit "Verification failed:\n\n${VERIFICATION}\n"
+      fi
 
       intraweb-settings-process-assumptions > /dev/null # TODO: set quiet instead
     fi
