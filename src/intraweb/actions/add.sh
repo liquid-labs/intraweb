@@ -1,15 +1,15 @@
-intraweb-create() {
+intraweb-add() {
   if [[ -z "${SITE}" ]] && [[ -n "${NON_INTERACTIVE}" ]]; then
     echoerrandexit "Must specify site in invocation in non-interactive mode."
   elif [[ -z "${SITE}" ]]; then
-    require-answer "Name (domain) of site to create?" SITE
+    require-answer "Name (domain) of site to add?" SITE
   fi
 
   intraweb-settings-infer-from-gcloud-config
   intraweb-settings-process-assumptions
 
-  intraweb-create-lib-enusre-dirs "${SITE}"
-  intraweb-create-lib-ensure-settings
+  intraweb-add-lib-enusre-dirs "${SITE}"
+  intraweb-add-lib-ensure-settings
 
   # Reflect our effective values back into the saved settings
   for SETTING in ${INTRAWEB_SETTINGS}; do
@@ -18,10 +18,10 @@ intraweb-create() {
   done
 
   intraweb-settings-update-settings
-  intraweb-create-helper-udpate-gcloud
+  intraweb-add-helper-udpate-gcloud
 }
 
-intraweb-create-lib-enusre-dirs() {
+intraweb-add-lib-enusre-dirs() {
   local SITE="${1}"
 
   local DIR
@@ -31,7 +31,7 @@ intraweb-create-lib-enusre-dirs() {
   done
 }
 
-intraweb-create-lib-ensure-settings() {
+intraweb-add-lib-ensure-settings() {
   [[ -f "${SITE_SETTINGS_FILE}" ]] || touch "${SITE_SETTINGS_FILE}"
   source "${SITE_SETTINGS_FILE}"
 
@@ -63,7 +63,7 @@ intraweb-create-lib-ensure-settings() {
   done
 }
 
-intraweb-create-helper-udpate-gcloud() {
+intraweb-add-helper-udpate-gcloud() {
   if [[ -z "${NO_UPDATE_GCLOUD_CONF:-}" ]]; then
     local SETTING GCLOUD_VALUE
     for SETTING in ${INTRAWEB_GCLOUD_PROPERTIES}; do
