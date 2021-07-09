@@ -767,10 +767,11 @@ gcloud-app-create() {
         || yes-no "App for '${PROJECT}' not found. Attempt to create?" 'Y'; then
       local CREATE_OPTS
       [[ -z "${PROJECT}" ]] || CREATE_OPTS="--project ${PROJECT}"
-      [[ -z "${REGION}" ]] || CREATE_OPTS="--region ${REGION}"
+      [[ -z "${REGION}" ]] || CREATE_OPTS="${CREATE_OPS:-} --region ${REGION}"
+      echo gcloud app create ${CREATE_OPTS}
       gcloud app create ${CREATE_OPTS} \
         && echo "App created for project '${PROJECT}'" \
-        || echoerrandexit "Unable to create app. See app."
+        || echoerrandexit "Unable to create app. See above for further details."
     fi # CREATE_IF_NECESSARY
   else # gcloud projects describe found something and the project exists
     echofmt "App for project '${PROJECT}' already exists."
