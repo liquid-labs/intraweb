@@ -22,7 +22,7 @@ for SETTING in ${INTRAWEB_SETTINGS}; do
     INTRAWEB_SITE_SETTINGS="${INTRAWEB_SITE_SETTINGS} INTRAWEB_SITE_${SETTING}"
   fi
 done
-INTRAWEB_DEFAULT_REGION='us-central1'
+INTRAWEB_DEFAULT_REGION='us-central' #TODO: has all the features, but is something else better? Randomize?
 
 INTRAWEB_GCLOUD_PROPERTIES='PROJECT REGION'
 
