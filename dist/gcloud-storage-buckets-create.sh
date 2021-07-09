@@ -702,7 +702,7 @@ gcloud-lib-common-create-options-spec() {
 
 gcloud-lib-common-create-named-options-spec() {
   gcloud-lib-common-create-options-spec
-  echo 'NO_RETRY_NAMES: RETRY_COUNT:= ID_OUTPUT_VAR'
+  echo 'NO_RETRY_NAMES: RETRY_COUNT:= ID_OUTPUT_VAR:='
 }
 
 gcloud-lib-common-retry-options-processing() {
@@ -772,6 +772,8 @@ gcloud-storage-buckets-create() {
     require-answer 'Bucket ID to create?' BUCKET
   fi
 
+  local EFFECTIVE_NAME="${BUCKET}" # initialize the effective name, which may be updated if unavailable.
+
   echofmt "Testing if storage bucket '${BUCKET}' already exists..."
   if ! gsutil ls ${TARGET_OPTS} gs://${BUCKET} >/dev/null 2>&1; then
     [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
@@ -808,7 +810,6 @@ gcloud-storage-buckets-create-helper-set-var() {
 }
 
 gcloud-storage-buckets-create-helper-command() {
-  local EFFECTIVE_NAME
   if [[ -z "${I:-}" ]]; then # we are in the first go around
     rm "${INTRAWEB_TMP_ERROR}"
     EFFECTIVE_NAME="${BUCKET}"

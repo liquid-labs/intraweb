@@ -702,7 +702,7 @@ gcloud-lib-common-create-options-spec() {
 
 gcloud-lib-common-create-named-options-spec() {
   gcloud-lib-common-create-options-spec
-  echo 'NO_RETRY_NAMES: RETRY_COUNT:= ID_OUTPUT_VAR'
+  echo 'NO_RETRY_NAMES: RETRY_COUNT:= ID_OUTPUT_VAR:='
 }
 
 gcloud-lib-common-retry-options-processing() {
@@ -779,7 +779,7 @@ gcloud-projects-iap-oauth-setup() {
           --support_email="${SUPPORT_EMAIL}" \
           --format='value(name)') \
         && echofmt "IAP-OAuth brand identify configured for project '${PROJECT}' with title '${APPLICATION_TITLE}' and support email '${SUPPORT_EMAIL}'..." \
-        || echoerrandexit "Error configuring OAuth brand identity. Refer to any errors above. Try again later or enable manually."
+        || echoerrandexit "Error configuring OAuth brand identity. Refer to any errors above. Try again later or enable manually.\n\nCommon problems include the use of a non-existent support email. Verify that the email address references a valid user or group."
     } # brand setup
 
   # now we can setup the intraweb client

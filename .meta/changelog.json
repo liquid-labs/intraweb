@@ -26,5 +26,19 @@
     "involvedProjects": [
       "@liquid-labs/intraweb"
     ]
+  },
+  {
+    "issues": [
+      "https://github.com/Liquid-Labs/intraweb/issues/2"
+    ],
+    "branch": "2021.07.08-zane@liquid-labs.com-save_inferred_settings",
+    "startTimestampLocal": "2021-07-08-1523 UTC",
+    "branchFrom": "42d9c5fb0d37cbc42ca8dbaec65877c48271f35e",
+    "description": "Save inferred settings",
+    "workInitiator": "zane@liquid-labs.com",
+    "branchInitiator": "zane@liquid-labs.com",
+    "involvedProjects": [
+      "@liquid-labs/intraweb"
+    ]
   }
 ]

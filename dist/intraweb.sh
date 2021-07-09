@@ -1,5 +1,17 @@
 #!/usr/bin/env bash
 
+# Technical Notes
+#
+# The overall flow is:
+#
+# 1) Identify the site we're working with and load existing settings. Note, these settings aren't used directly as they
+#    may be overriden or missing. The effective values will be set as we process.
+# 2) Set settings based on the site configs, if any, unless overidden by explicit options.
+# 3a) If in add flow, infer (some) missing settings from the gcloud configuration if not already set (by the site
+#    config or the on the command line).
+# 3b) If we're in a non-add flow, then verify that all settings are present.
+# 4) Perform the action.
+
 # bash strict settings
 set -o errexit # exit on errors; set -e
 set -o nounset # exit on use of uninitialized variable
@@ -719,69 +731,30 @@ function real_path {
   fi
 }
 
-intraweb-build() {
-  # first, we do our own global auth check
-  gcloud-lib-common-options-check-access-and-report
-  # and now we can skip the auth check for the individual steps
-  local COMMON_OPTS="--skip-auth-check"
-  local PROJECT_CREATE_OPTS="${COMMON_OPTS} --organization ${ORGANIZATION}"
-  local IAP_OPTS="${COMMON_OPTS}"
-  local BUCKET_CREATE_OPTS="${COMMON_OPTS}"
-  local APP_CREATE_OPTS="${COMMON_OPTS}"
-  if [[ -n "${PROJECT:-}" ]]; then
-    PROJECT_CREATE_OPTS="${PROJECT_CREATE_OPTS} --project ${PROJECT}"
-    IAP_OPTS="${IAP_OPTS} --project ${PROJECT}"
-    BUCKET_CREATE_OPTS="${BUCKET_CREATE_OPTS} --project ${PROJECT}"
-    APP_CREATE_OPTS="${APP_CREATE_OPTS} --project ${PROJECT}"
-  fi
-  if [[ -n "${ASSUME_DEFAULTS:-}" ]]; then
-    PROJECT_CREATE_OPTS="${PROJECT_CREATE_OPTS} --non-interactive --create-if-necessary"
-    IAP_OPTS="${IAP_OPTS} --non-interactive"
-    BUCKET_CREATE_OPTS="${BUCKET_CREATE_OPTS} --non-interactive --create-if-necessary"
-    [[ -z "${BUCKET}" ]] || BUCKET_CREATE_OPTS="${BUCKET_CREATE_OPTS} --bucket ${BUCKET}"
-    APP_CREATE_OPTS="${APP_CREATE_OPTS} --non-interactive --create-if-necessary"
-  fi
-  [[ -z "${APPLICATION_TITLE}" ]] || IAP_OPTS="${IAP_OPTS} --application-title '${APPLICATION_TITLE}'"
-  [[ -z "${SUPPORT_EMAIL}" ]] || IAP_OPTS="${IAP_OPTS} --support-email '${SUPPORT_EMAIL}'"
-  [[ -z "${REGION}" ]] || APP_CREATE_OPTS="${APP_CREATE_OPTS} --region ${REGION}" # TODO: do others take a region?
-
-  # no 'eval' necessary here; we don't expect any spaces (see note below in 'gcloud-projects-iap-oauth-setup' call)
-  gcloud-projects-create ${PROJECT_CREATE_OPTS}
-
-  # without the eval, the '-quotes get read as literal, to the tokens end up being like:
-  # --application_title|'Foo|Bar'|--support_email|'foo@bar.com'
-  # as if the email literally began and ended with ticks and any title with spaces gets cut up.
-  eval gcloud-projects-iap-oauth-setup ${IAP_OPTS}
-  gcloud-app-create ${APP_CREATE_OPTS}
-  gcloud-storage-buckets-create ${BUCKET_CREATE_OPTS}
-  gcloud-storage-buckets-configure ${COMMON_OPTS} \
-    --bucket ${BUCKET} \
-    --make-uniform \
-    --reader "serviceAccount:${PROJECT}@appspot.gserviceaccount.com"
-}
-intraweb-deploy() {
-  local APP_DEPLOY_OPTS
-  [[ -z "${PROJECT:-}" ]] || APP_DEPLOY_OPTS="--project ${PROJECT}"
-  [[ -z "${ASSUME_DEFAULTS:-}" ]] || APP_DEPLOY_OPTS="${APP_DEPLOY_OPTS} --quiet" # skips delpoy confirm
-
-  [[ -n "${NO_DEPLOY_CONTENT:-}" ]] || \
-    gsutil -m rsync -r src/test/hello-world-web gs://${BUCKET}
-
-  [[ -n "${NO_DEPLOY_APP:-}" ]] || \
-    gcloud app deploy ./src/appengine/app.yaml ${APP_DEPLOY_OPTS}
-}
-intraweb-init() {
+intraweb-add() {
   if [[ -z "${SITE}" ]] && [[ -n "${NON_INTERACTIVE}" ]]; then
     echoerrandexit "Must specify site in invocation in non-interactive mode."
   elif [[ -z "${SITE}" ]]; then
-    require-answer "Name (domain) of site to initialize?" SITE
+    require-answer "Name (domain) of site to add?" SITE
   fi
 
-  intraweb-init-lib-enusre-dirs "${SITE}"
-  intraweb-init-lib-ensure-settings
+  intraweb-settings-infer-from-gcloud-config
+  intraweb-settings-process-assumptions
+
+  intraweb-add-lib-enusre-dirs "${SITE}"
+  intraweb-add-lib-ensure-settings
+
+  # Reflect our effective values back into the saved settings
+  for SETTING in ${INTRAWEB_SETTINGS}; do
+    IW_SETTING="INTRAWEB_SITE_${SETTING}"
+    eval "${IW_SETTING}='${!SETTING:-}'" # may still be blank, but we'll catch that in ensure-settings
+  done
+
+  intraweb-settings-update-settings
+  intraweb-add-helper-udpate-gcloud
 }
 
-intraweb-init-lib-enusre-dirs() {
+intraweb-add-lib-enusre-dirs() {
   local SITE="${1}"
 
   local DIR
@@ -791,30 +764,141 @@ intraweb-init-lib-enusre-dirs() {
   done
 }
 
-intraweb-init-lib-ensure-settings() {
-  [[ -f "${INTRAWEB_SITE_SETTINGS}" ]] || touch "${INTRAWEB_SITE_SETTINGS}"
-  source "${INTRAWEB_SITE_SETTINGS}"
+intraweb-add-lib-ensure-settings() {
+  [[ -f "${SITE_SETTINGS_FILE}" ]] || touch "${SITE_SETTINGS_FILE}"
+  source "${SITE_SETTINGS_FILE}"
 
-  local INTRAWEB_DEFAULT_ORGANIZATION_PROMPT='Default Organization—a number—to nest projects under?'
-  local INTRAWEB_PROJECT_PREFIX_PROMPT='Default Google project prefix?'
-  local INTRAWEB_COMPANY_NAME_PROMPT='Default company name?'
-  local INTRAWEB_OAUTH_SUPPORT_EMAIL_PROMPT='Default OAuth authentication support email?'
+  local INTRAWEB_SITE_ORGANIZATION_PROMPT='Organization—a number—to nest projects under?'
+  local INTRAWEB_SITE_PROJECT_PROMPT='Project (base) name?'
+  local INTRAWEB_SITE_BUCKET_PROMPT='Bucket (base) name?'
+  local INTRAWEB_SITE_APPLICATION_TITLE_PROMPT='Application title?'
+  local INTRAWEB_SITE_REGION_PROMPT='Deploy region?'
+  local INTRAWEB_SITE_SUPPORT_EMAIL_PROMPT='OAuth authentication support email?'
 
-  local SETTING PROMPT_VAR
+  local SETTING PROMPT_VAR PROMPT DEFAULT_VAR DEFAULT
   for SETTING in ${INTRAWEB_SETTINGS}; do
-    PROMPT_VAR="${SETTING}_PROMPT"
-    eval require-answer --force "'${!PROMPT_VAR:=${SETTING}?}'" "${SETTING}" "'${!SETTING:-}'"
-  done
+    if [[ -z "${ASSUME_DEFAULTS}" ]] || [[ -z "${!SETTING:-}" ]]; then
+      [[ -z "${NON_INTERACTIVE}" ]] || echofmt "Could not determine value for '${SETTING}' in non-interactive mode."
 
-  intraweb-init-lib-update-settings
+      PROMPT_VAR="INTRAWEB_SITE_${SETTING}_PROMPT"
+      PROMPT="${!PROMPT_VAR:=${SETTING}?}"
+
+      DEFAULT="${!SETTING:-}"
+      if [[ -z "${DEFAULT:-}" ]]; then
+        DEFAULT_VAR="INTRAWEB_DEFAULT_${SETTING}"
+        DEFAULT="${!DEFAULT_VAR:-}"
+      fi
+
+      require-answer --force "${PROMPT}" ${SETTING} "${DEFAULT}"
+      eval "INTRAWEB_SITE_${SETTING}=${!SETTING}"
+
+      intraweb-settings-process-assumptions > /dev/null # TODO: set quiet instead
+    fi
+  done
 }
 
-intraweb-init-lib-update-settings() {
-  ! [[ -f "${INTRAWEB_SITE_SETTINGS}" ]] || rm "${INTRAWEB_SITE_SETTINGS}"
-  local SETTING
-  for SETTING in ${INTRAWEB_SETTINGS}; do
-    echo "${SETTING}='${!SETTING}'" >> "${INTRAWEB_SITE_SETTINGS}"
-  done
+intraweb-add-helper-udpate-gcloud() {
+  if [[ -z "${NO_UPDATE_GCLOUD_CONF:-}" ]]; then
+    local SETTING GCLOUD_VALUE
+    for SETTING in ${INTRAWEB_GCLOUD_PROPERTIES}; do
+
+      if [[ -n "${!SETTING:-}" ]]; then
+        GCLOUD_PROPERTY="$(intraweb-setting-infer-gcloud-property-scope "${SETTING}")"
+        GCLOUD_VALUE="$(gcloud config get-value ${GCLOUD_PROPERTY})"
+        if [[ -z "${GCLOUD_VALUE}" ]] || [[ -n "${FORCE_UPDATE_GCLOUD_CONF}" ]]; then
+          gcloud config set ${GCLOUD_PROPERTY} "${!SETTING}" \
+            && echofmt "Set gcloud conf '${GCLOUD_PROPERTY}' to '${!SETTING}'"
+        fi
+      fi
+    done
+  fi
+}
+intraweb-build() {
+  # first, we do our own global auth check
+  gcloud-lib-common-options-check-access-and-report
+  # and now we can skip the auth check for the individual steps
+  # TODO: need to revisit 'passthrough' support in 'setSimpleOptions' to avoid all this. E.g., by befault, use the
+  # existing var if the option is NOT set
+  local COMMON_OPTS PROJECT_CREATE_OPTS IAP_OPTS BUCKET_CREATE_OPTS APP_CREATE_OPTS
+  intraweb-build-helper-update-settings
+
+  local FINAL_PROJECT_NAME FINAL_BUCKET_NAME
+
+  gcloud-projects-create ${PROJECT_CREATE_OPTS} --id-output-var FINAL_PROJECT_NAME
+  if [[ "${FINAL_PROJECT_NAME}" != "${PROJECT}" ]]; then
+    PROJECT="${FINAL_PROJECT_NAME}"
+    INTRAWEB_SITE_PROJECT="${PROJECT}"
+    intraweb-settings-update-settings
+    intraweb-build-helper-update-settings
+  fi
+
+  # without the eval, the '-quotes get read as literal, to the tokens end up being like:
+  # --application_title|'Foo|Bar'|--support_email|'foo@bar.com'
+  # as if the email literally began and ended with ticks and any title with spaces gets cut up.
+  eval gcloud-projects-iap-oauth-setup ${IAP_OPTS}
+
+  gcloud-app-create ${APP_CREATE_OPTS}
+
+  gcloud-storage-buckets-create ${BUCKET_CREATE_OPTS} --id-output-var FINAL_BUCKET_NAME
+  if [[ "${FINAL_BUCKET_NAME}" != "${BUCKET}" ]]; then
+    BUCKET="${FINAL_BUCKET_NAME}"
+    INTRAWEB_SITE_BUCKET="${BUCKET}"
+    intraweb-settings-update-settings
+    intraweb-build-helper-update-settings
+  fi
+
+  gcloud-storage-buckets-configure ${COMMON_OPTS} \
+    --bucket ${BUCKET} \
+    --make-uniform \
+    --reader "serviceAccount:${PROJECT}@appspot.gserviceaccount.com"
+
+  echofmt "\n${bold}Congragutalions!${reset} Your intraweb infrastructure is now built. To deploy content to the site, run:\n\nintraweb --site ${SITE} deploy"
+}
+
+# This is necessary to update the 'project' setting if things change.
+intraweb-build-helper-update-settings() {
+  # notice, we manipulate the super-funcs local vars directly.
+  COMMON_OPTS="--skip-auth-check --project ${PROJECT}"
+  [[ -z "${NON_INTERACTIVE}" ]] || COMMON_OPTS="${COMMON_OPTS} --non-interactive"
+  PROJECT_CREATE_OPTS="${COMMON_OPTS} --organization ${ORGANIZATION}"
+  IAP_OPTS="${COMMON_OPTS}"
+  BUCKET_CREATE_OPTS="${COMMON_OPTS}"
+  APP_CREATE_OPTS="${COMMON_OPTS}"
+  [[ -z "${CREATE_IF_NECESSARY}" ]] || {
+    PROJECT_CREATE_OPTS="${PROJECT_CREATE_OPTS} --create-if-necessary"
+    APP_CREATE_OPTS="${APP_CREATE_OPTS} --create-if-necessary"
+    BUCKET_CREATE_OPTS="${BUCKET_CREATE_OPTS} --create-if-necessary"
+  }
+  [[ -z "${BUCKET}" ]] || BUCKET_CREATE_OPTS="${BUCKET_CREATE_OPTS} --bucket ${BUCKET}"
+  [[ -z "${APPLICATION_TITLE}" ]] || IAP_OPTS="${IAP_OPTS} --application-title '${APPLICATION_TITLE}'"
+  [[ -z "${SUPPORT_EMAIL}" ]] || IAP_OPTS="${IAP_OPTS} --support-email '${SUPPORT_EMAIL}'"
+  [[ -z "${REGION}" ]] || APP_CREATE_OPTS="${APP_CREATE_OPTS} --region ${REGION}" # TODO: do others take a region?
+}
+intraweb-deploy() {
+  local APP_DEPLOY_OPTS
+  # TODO: need to revisit 'passthrough' support in 'setSimpleOptions' to avoid all this. E.g., by befault, use the
+  # existing var if the option is NOT set
+  APP_DEPLOY_OPTS="--project ${PROJECT}"
+  # We are quite/auto-deployed by default. This *is* a transalted setting.
+  [[ -n "${CONFIRM:-}" ]] || APP_DEPLOY_OPTS="${APP_DEPLOY_OPTS} --quiet" # skips delpoy confirm
+
+  [[ -n "${NO_DEPLOY_CONTENT:-}" ]] || \
+    gsutil -m rsync -r src/test/hello-world-web gs://${BUCKET}
+
+  [[ -n "${NO_DEPLOY_APP:-}" ]] || \
+    gcloud app deploy ./src/appengine/app.yaml ${APP_DEPLOY_OPTS}
+}
+intraweb-list() {
+  ls "${INTRAWEB_SITES}"
+}
+intraweb-remove() {
+  if [[ -n "${SHUTDOWN_PROJECT}" ]]; then
+    gcloud projects delete "${PROJECT}" && echofmt "Project '${PROJECT}' has been shut down." \
+      || echoerrandexit "There was a problem shutting down the project. Leaving intraweb site entry in place."
+  fi
+  if [[ -d "${INTRAWEB_SITES}/${SITE}" ]]; then
+    rm -rf "${INTRAWEB_SITES}/${SITE}" && echofmt "Local intraweb site entry deleted."
+  fi
 }
 intraweb-run() {
   :
@@ -824,11 +908,28 @@ ACTION=""
 ASSUME_DEFAULTS=""
 PROJECT=""
 ORGANIZATION=""
-INTRAWEB_SITE_SETTINGS=""
+SITE_SETTINGS_FILE=""
 # end cli option globals
 
-VALID_ACTIONS="init build deploy run"
-INTRAWEB_SETTINGS="INTRAWEB_DEFAULT_ORGANIZATION INTRAWEB_PROJECT_PREFIX INTRAWEB_COMPANY_NAME INTRAWEB_OAUTH_SUPPORT_EMAIL"
+VALID_ACTIONS="add list build deploy remove run update-settings"
+INTRAWEB_SETTINGS="ORGANIZATION \
+PROJECT \
+BUCKET \
+REGION \
+APPLICATION_TITLE \
+SUPPORT_EMAIL"
+
+INTRAWEB_SITE_SETTINGS=''
+for SETTING in ${INTRAWEB_SETTINGS}; do
+  if [[ -z "${INTRAWEB_SITE_SETTINGS}" ]]; then
+    INTRAWEB_SITE_SETTINGS="INTRAWEB_SITE_${SETTING}"
+  else
+    INTRAWEB_SITE_SETTINGS="${INTRAWEB_SITE_SETTINGS} INTRAWEB_SITE_${SETTING}"
+  fi
+done
+INTRAWEB_DEFAULT_REGION='us-central' #TODO: has all the features, but is something else better? Randomize?
+
+INTRAWEB_GCLOUD_PROPERTIES='PROJECT REGION'
 
 INTRAWEB_DB="${HOME}/.liq/intraweb"
 INTRAWEB_SITES="${INTRAWEB_DB}/sites"
@@ -837,6 +938,107 @@ INTRAWEB_TMP_ERROR="${INTRAWEB_CACHE}/temp-error.txt"
 
 # TODO: not currently used...
 # INTRAWEB_DEFAULT_SETTINGS="${INTRAWEB_DB}/default-site-settings.sh"
+intraweb-settings-verify-present() {
+  local SETTING PROBLEMS
+
+  for SETTING in $INTRAWEB_SITE_SETTINGS; do
+    if [[ -z "${!SETTING:-}" ]]; then
+      echoerr "Did not find expected setting: '${SETTING}'."
+      PROBLEMS=true
+    fi
+    if [[ "${PROBLEMS}" == true ]]; then
+      echoerrandexit "At least one parameter is not set. Try:\n\nintraweb update-settings --site ${SITE}"
+    fi
+  done
+}
+
+intraweb-setting-infer-gcloud-property-scope() {
+  local GCLOUD_PROPERTY="${1}"
+
+  GCLOUD_PROPERTY="$(echo "${GCLOUD_PROPERTY}" | tr '[:upper:]' '[:lower:]')"
+  case "${GCLOUD_PROPERTY}" in
+    region)
+      GCLOUD_PROPERTY="compute/${GCLOUD_PROPERTY}" ;;
+  esac
+
+  echo "${GCLOUD_PROPERTY}"
+}
+
+intraweb-settings-infer-from-gcloud-config() {
+  local SETTING NO_SETTING GCLOUD_PROPERTY
+  for SETTING in ${INTRAWEB_GCLOUD_PROPERTIES}; do
+    NO_SETTING="NO_INFER_${SETTING}"
+
+    if [[ -z "${!SETTING:-}" ]] && [[ -z "${!NO_SETTING:-}" ]]; then
+      GCLOUD_PROPERTY="$(intraweb-setting-infer-gcloud-property-scope "${SETTING}")"
+
+      eval "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})" || true
+      # Note the setting may remain undefined, and that's OK
+      [[ -z "${!SETTING:-}" ]] || echofmt "Inferred ${SETTING} '${!SETTING}' from active gcloud conf."
+    fi
+  done
+}
+
+# Examines non-set values and attempts to infer default values. This will update the effective values (e.g.,
+# ORGANIZATION, PROJECT, etc.) as well as the 'INTRAWEB_SITE_*' values. We assume that the INTRAWEB_VALUES are not set
+# because if they were, then the effective value would have been set by this point.
+intraweb-settings-process-assumptions() {
+  if [[ -n "${ASSUME_DEFAULTS}" ]]; then
+    echofmt "Setting assumable values..."
+    if [[ -z "${ORGANIZATION}" ]]; then # let's see if they have access to just one
+      local POTENTIAL_IDS ID_COUNT
+      POTENTIAL_IDS="$(gcloud organizations list --format 'value(ID)')"
+      ID_COUNT=$(echo "${POTENTIAL_IDS}" | wc -l)
+      if (( ${ID_COUNT} == 1 )); then
+        ORGANIZATION=${POTENTIAL_IDS}
+        echofmt "Inferred organization '${ORGANIZATION}' from single access."
+      fi
+    fi
+
+    # is this a new project?
+    local COMPANY_DISPLAY_NAME
+    if [[ -z "${PROJECT}" ]]; then
+      # TODO: lowercase and '-' case whatever comes out of here... once we move this to node? At that point, we'll wanat # to use the 'project safe' version for the project and the raw version for the application title. (I'm assuming
+      # the display name can have spaces. It's 'liquid-labs.com' for LL, but I'm assuming that's just my convention.)
+      COMPANY_DISPLAY_NAME="$(gcloud organizations describe ${ORGANIZATION} --format 'value(displayName)')"
+      # TODO (cont) for now, we'll just kill it if there's any disallowed characters
+      { [[ "${COMPANY_DISPLAY_NAME}" != *' '* ]] && echofmt "Found company name '${COMPANY_DISPLAY_NAME}'..."; } \
+        || unset COMPANY_DISPLAY_NAME
+    fi
+
+    # no project but we have a company name
+    [[ -n "${PROJECT:-}" ]] || [[ -z "${COMPANY_DISPLAY_NAME}" ]] || {
+      PROJECT="${COMPANY_DISPLAY_NAME}-intraweb"
+      echofmt "Setting project ID to '${PROJECT}'."
+    }
+
+    # no application title, but we have a company name
+    [[ -n "${APPLICATION_TITLE}" ]] || [[ -z "${COMPANY_DISPLAY_NAME}" ]] || {
+      APPLICATION_TITLE="${COMPANY_DISPLAY_NAME} Intraweb"
+      echofmt "Setting application title to '${APPLICATION_TITLE}'."
+    }
+
+
+    # bucket ID is same as project ID if not set
+    [[ -n "${BUCKET}" ]] || [[ -z "${PROJECT}" ]] || {
+      BUCKET="${PROJECT}"
+      echofmt "Setting bucket ID to '${BUCKET}'."
+    }
+
+    [[ -n "${SUPPORT_EMAIL}" ]] || [[ -z "${INTRAWEB_SITE_SUPPORT_EMAIL}" ]] || {
+      SUPPORT_EMAIL="${INTRAWEB_SITE_SUPPORT_EMAIL}"
+      echofmt "Setting support email to '${SUPPORT_EMAIL}'."
+    }
+  fi
+}
+
+intraweb-settings-update-settings() {
+  ! [[ -f "${SITE_SETTINGS_FILE}" ]] || rm "${SITE_SETTINGS_FILE}"
+  local SETTING
+  for SETTING in ${INTRAWEB_SITE_SETTINGS}; do
+    echo "${SETTING}='${!SETTING}'" >> "${SITE_SETTINGS_FILE}"
+  done
+}
 usage() {
   echo "TODO"
 }
@@ -871,10 +1073,11 @@ gcloud-app-create() {
         || yes-no "App for '${PROJECT}' not found. Attempt to create?" 'Y'; then
       local CREATE_OPTS
       [[ -z "${PROJECT}" ]] || CREATE_OPTS="--project ${PROJECT}"
-      [[ -z "${REGION}" ]] || CREATE_OPTS="--region ${REGION}"
+      [[ -z "${REGION}" ]] || CREATE_OPTS="${CREATE_OPS:-} --region ${REGION}"
+      echo gcloud app create ${CREATE_OPTS}
       gcloud app create ${CREATE_OPTS} \
         && echo "App created for project '${PROJECT}'" \
-        || echoerrandexit "Unable to create app. See app."
+        || echoerrandexit "Unable to create app. See above for further details."
     fi # CREATE_IF_NECESSARY
   else # gcloud projects describe found something and the project exists
     echofmt "App for project '${PROJECT}' already exists."
@@ -901,6 +1104,8 @@ gcloud-projects-create() {
   gcloud-lib-common-options-check-access-and-report
   gcloud-lib-common-org-options-processing
   gcloud-lib-common-retry-options-processing
+
+  local EFFECTIVE_NAME="${PROJECT}"
 
   echofmt "Testing if project '${PROJECT}' already exists..."
   if ! gcloud projects describe "${PROJECT}" >/dev/null 2>&1; then
@@ -938,7 +1143,6 @@ gcloud-projects-create-helper-set-var() {
 }
 
 gcloud-projects-create-helper-command() {
-  local EFFECTIVE_NAME
   if [[ -z "${I:-}" ]]; then # we are in the first go around
     rm "${INTRAWEB_TMP_ERROR}"
     EFFECTIVE_NAME="${PROJECT}"
@@ -992,7 +1196,7 @@ gcloud-projects-iap-oauth-setup() {
           --support_email="${SUPPORT_EMAIL}" \
           --format='value(name)') \
         && echofmt "IAP-OAuth brand identify configured for project '${PROJECT}' with title '${APPLICATION_TITLE}' and support email '${SUPPORT_EMAIL}'..." \
-        || echoerrandexit "Error configuring OAuth brand identity. Refer to any errors above. Try again later or enable manually."
+        || echoerrandexit "Error configuring OAuth brand identity. Refer to any errors above. Try again later or enable manually.\n\nCommon problems include the use of a non-existent support email. Verify that the email address references a valid user or group."
     } # brand setup
 
   # now we can setup the intraweb client
@@ -1105,6 +1309,8 @@ gcloud-storage-buckets-create() {
     require-answer 'Bucket ID to create?' BUCKET
   fi
 
+  local EFFECTIVE_NAME="${BUCKET}" # initialize the effective name, which may be updated if unavailable.
+
   echofmt "Testing if storage bucket '${BUCKET}' already exists..."
   if ! gsutil ls ${TARGET_OPTS} gs://${BUCKET} >/dev/null 2>&1; then
     [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
@@ -1141,7 +1347,6 @@ gcloud-storage-buckets-create-helper-set-var() {
 }
 
 gcloud-storage-buckets-create-helper-command() {
-  local EFFECTIVE_NAME
   if [[ -z "${I:-}" ]]; then # we are in the first go around
     rm "${INTRAWEB_TMP_ERROR}"
     EFFECTIVE_NAME="${BUCKET}"
@@ -1194,7 +1399,7 @@ gcloud-lib-common-create-options-spec() {
 
 gcloud-lib-common-create-named-options-spec() {
   gcloud-lib-common-create-options-spec
-  echo 'NO_RETRY_NAMES: RETRY_COUNT:= ID_OUTPUT_VAR'
+  echo 'NO_RETRY_NAMES: RETRY_COUNT:= ID_OUTPUT_VAR:='
 }
 
 gcloud-lib-common-retry-options-processing() {
@@ -1235,90 +1440,88 @@ fill-rand() {
 }
 # but NOT ./sources; ./sources contains exported 'sourceable' functions
 
-# The first group are user visible config options. These will be automatically provided if '--assume-defaults' is
-# toggled.
-#
-# The second group, staarting at '--assume-defaults', affect the behavior of the app.
-#
-# The third group, starting at '--organization', affect associotions of any created components. These can typically
-# be gleaned from the active 'gcloud config', but can be overriden here.
+COMMON_OPTIONS="SITE= NON_INTERACTIVE:"
+
+# Options used by add to setup site data. Using these options with other actions will cause an error.
+ADD_OPTIONS="APPLICATION_TITLE:t= \
+SUPPORT_EMAIL:e= \
+ASSUME_DEFAULTS: \
+ORGANIZATION= \
+NO_INFER_ORGANIZATION: \
+PROJECT= \
+NO_INFER_PROJECT: \
+BUCKET= \
+REGION= \
+NO_INFER_REGION: \
+NO_UPDATE_GCLOUD_CONF: \
+FORCE_UPDATE_GCLOUD_CONF:"
+
+BUILD_OPTIONS="CREATE_IF_NECESSARY \
+NO_RETRY_NAMES: \
+RETRY_COUNT:="
+
+# Options specific to deploy.
+DEPLOY_OPTIONS="CONFIRM: \
+NO_DEPLOY_APP:A \
+NO_DEPLOY_CONTENT:C"
+
+REMOVE_OPTIONS="SHUTDOWN_PROJECT:"
+
+OPTION_GROUPS="ADD_OPTIONS BUILD_OPTIONS DEPLOY_OPTIONS"
+
 eval "$(setSimpleOptions --script \
-  SITE= \
-  APPLICATION_TITLE:t= \
-  SUPPORT_EMAIL:e= \
-  ASSUME_DEFAULTS: \
-  NO_DEPLOY_APP:A \
-  NO_DEPLOY_CONTENT:C \
-  ORGANIZATION= \
-  PROJECT= \
-  NO_INFER_PROJECT: \
-  BUCKET= \
-  REGION= \
-  NO_INFER_REGION: -- "$@")"
+  ${COMMON_OPTIONS} \
+  ${ADD_OPTIONS} \
+  ${BUILD_OPTIONS} \
+  ${DEPLOY_OPTIONS} \
+  ${REMOVE_OPTIONS} \
+  -- "$@")"
 ACTION="${1:-}"
 if [[ -z "${ACTION}" ]]; then
   usage-bad-action # will exit process
-fi
+else
+  # 'add' is fine to re-run, so 'update-settings' is effectively just a semantic alias.
+  [[ "${ACTION}" != "update-settings" ]] || ACTION=add
 
-[[ -z "${SITE}" ]] || INTRAWEB_SITE_SETTINGS="${INTRAWEB_SITES}/${SITE}/settings.sh"
-if [[ -n "${SITE}" ]] && [[ -f "${INTRAWEB_SITE_SETTINGS}" ]]; then
-  source "${INTRAWEB_SITE_SETTINGS}"
-fi
-
-intraweb-helper-verify-settings() {
-  local SETTING PROBLEMS
-
-  for SETTING in $INTRAWEB_SETTINGS; do
-    if [[ -z "${!SETTING:-}" ]]; then
-      echoerr "Did not find expected setting: '${SETTING}'."
-      PROBLEMS=true
-    fi
-    if [[ "${PROBLEMS}" == true ]]; then
-      echoerrandexit "At least one parameter is not set. Try:\n\nintraweb init"
+  OPTIONS_VAR="$(echo "${ACTION}" | tr '[[:lower:]]' '[[:upper:]]')_INIT"
+  for OPTION_GROUP in ${OPTION_GROUPS}; do
+    if [[ "${OPTIONS_VAR}" != "${OPTION_GROUP}" ]]; then
+      [[ -z "${!OPTIONS_VAR:-}" ]] || for OPTION in ${!OPTIONS_VAR}; do
+        OPTION_VAR=$(echo "${OPTION}" | sed 's/[^A-Z_]//g')
+        [[ -z "${!OPTION_VAR}" ]] || {
+          CLI_OPTION="$(echo "${!OPTION_VAR}" | tr '[[:upper:]]' '[[:lower:]]')"
+          echoerrandexit "Option '--${CLI_OPTION}' cannot be used with action '${ACTION}'."
+        }
+      done
     fi
   done
-}
+fi
 
-[[ "${ACTION}" == init ]] || intraweb-helper-verify-settings "${SITE}"
+if [[ "${ACTION}" != "list" ]]; then
+  # TODO: support a (possible) default site link.
+  [[ -n "${SITE}" ]] || echoerrandexit "The '--site' option must be specified."
 
-# Process/set the association parameters.
-[[ -n "${ORGANIZATION:-}" ]] || ORGANIZATION="${INTRAWEB_DEFAULT_ORGANIZATION}"
+  SITE_SETTINGS_FILE="${INTRAWEB_SITES}/${SITE}/settings.sh"
+  if [[ -f "${SITE_SETTINGS_FILE}" ]]; then
+    source "${SITE_SETTINGS_FILE}"
+  elif [[ "${ACTION}" != 'add' ]]; then
+    echoerrandexit "Did not find expected settings file for '${SITE}'. Try:\nintraweb add --site '${SITE}'"
+  fi
 
-intraweb-helper-infer-associations() {
-  local SETTING NO_SETTING GCLOUD_PROPERTY
-  for SETTING in PROJECT REGION; do
-    NO_SETTING="NO_INFER_${SETTING}"
-    GCLOUD_PROPERTY="$(echo "${SETTING}" | tr '[:upper:]' '[:lower:]')"
-    case "${GCLOUD_PROPERTY}" in
-      region)
-        GCLOUD_PROPERTY="compute/${GCLOUD_PROPERTY}" ;;
-    esac
-
-    if [[ -z "${!SETTING:-}" ]] && [[ -z "${!NO_SETTING:-}" ]]; then
-      eval "${SETTING}=\$(gcloud config get-value ${GCLOUD_PROPERTY})"
-      # Note the setting may remain undefined, and that's OK
-      [[ -z "${!SETTING:-}" ]] || echofmt "Inferred ${SETTING} '${!SETTING}' from active gcloud conf."
-    fi
+  # Set the effective parameters from site settings if not set in command options.
+  for SETTING in ${INTRAWEB_SETTINGS}; do
+    IW_SETTING="INTRAWEB_SITE_${SETTING}"
+    # If the setting isn't set, then we set it from the IW setting (which may also be blank)
+    [[ -n "${!SETTING:-}" ]] || eval "${SETTING}='${!IW_SETTING:-}'"
   done
-}
-intraweb-helper-infer-associations
 
-if [[ -n "${ASSUME_DEFAULTS}" ]]; then
-  # is this a new project?
-  [[ -n "${PROJECT:-}" ]] || PROJECT="${INTRAWEB_PROJECT_PREFIX}-intraweb"
-
-  [[ -n "${BUCKET}" ]] || BUCKET="${PROJECT}"
-
-  [[ -n "${APPLICATION_TITLE}" ]] || [[ -z "${INTRAWEB_COMPANY_NAME}" ]] \
-    || APPLICATION_TITLE="${INTRAWEB_COMPANY_NAME} Intraweb"
-
-  [[ -n "${SUPPORT_EMAIL}" ]] || [[ -z "${INTRAWEB_OAUTH_SUPPORT_EMAIL}" ]] || SUPPORT_EMAIL="${INTRAWEB_OAUTH_SUPPORT_EMAIL}"
-
-  echofmt "Running with default values..."
+  if [[ "${ACTION}" != add ]]; then
+    intraweb-settings-verify-present
+  fi
 fi
 
 case "${ACTION}" in
-  init|build|deploy|run)
+  add|list|build|deploy|remove|run)
     intraweb-${ACTION} ;;
   *)
     usage-bad-action ;;# will exit process

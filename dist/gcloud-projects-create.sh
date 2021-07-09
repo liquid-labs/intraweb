@@ -702,7 +702,7 @@ gcloud-lib-common-create-options-spec() {
 
 gcloud-lib-common-create-named-options-spec() {
   gcloud-lib-common-create-options-spec
-  echo 'NO_RETRY_NAMES: RETRY_COUNT:= ID_OUTPUT_VAR'
+  echo 'NO_RETRY_NAMES: RETRY_COUNT:= ID_OUTPUT_VAR:='
 }
 
 gcloud-lib-common-retry-options-processing() {
@@ -763,6 +763,8 @@ gcloud-projects-create() {
   gcloud-lib-common-org-options-processing
   gcloud-lib-common-retry-options-processing
 
+  local EFFECTIVE_NAME="${PROJECT}"
+
   echofmt "Testing if project '${PROJECT}' already exists..."
   if ! gcloud projects describe "${PROJECT}" >/dev/null 2>&1; then
     [[ -z "${NON_INTERACTIVE}" ]] || [[ -n "${CREATE_IF_NECESSARY}" ]] \
@@ -799,7 +801,6 @@ gcloud-projects-create-helper-set-var() {
 }
 
 gcloud-projects-create-helper-command() {
-  local EFFECTIVE_NAME
   if [[ -z "${I:-}" ]]; then # we are in the first go around
     rm "${INTRAWEB_TMP_ERROR}"
     EFFECTIVE_NAME="${PROJECT}"
