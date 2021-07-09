@@ -48,7 +48,7 @@ NO_DEPLOY_CONTENT:C"
 
 OPTION_GROUPS="INIT_OPTIONS DEPLOY_OPTIONS"
 
-eval "$(setSimpleOptions --script ${COMMON_OPTIONS} ${INIT_OPTIONS} ${DEPLOY_OPTIONS} -- "$@")"
+eval "$(setSimpleOptions --script ${COMMON_OPTIONS} ${INIT_OPTIONS} ${BUILD_OPTIONS} ${DEPLOY_OPTIONS} -- "$@")"
 ACTION="${1:-}"
 if [[ -z "${ACTION}" ]]; then
   usage-bad-action # will exit process
