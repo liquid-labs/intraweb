@@ -46,9 +46,17 @@ DEPLOY_OPTIONS="CONFIRM: \
 NO_DEPLOY_APP:A \
 NO_DEPLOY_CONTENT:C"
 
+REMOVE_OPTIONS="SHUTDOWN_PROJECT:"
+
 OPTION_GROUPS="ADD_OPTIONS BUILD_OPTIONS DEPLOY_OPTIONS"
 
-eval "$(setSimpleOptions --script ${COMMON_OPTIONS} ${ADD_OPTIONS} ${BUILD_OPTIONS} ${DEPLOY_OPTIONS} -- "$@")"
+eval "$(setSimpleOptions --script \
+  ${COMMON_OPTIONS} \
+  ${ADD_OPTIONS} \
+  ${BUILD_OPTIONS} \
+  ${DEPLOY_OPTIONS} \
+  ${REMOVE_OPTIONS} \
+  -- "$@")"
 ACTION="${1:-}"
 if [[ -z "${ACTION}" ]]; then
   usage-bad-action # will exit process
@@ -94,7 +102,7 @@ if [[ "${ACTION}" != "list" ]]; then
 fi
 
 case "${ACTION}" in
-  add|list|build|deploy|run)
+  add|list|build|deploy|remove|run)
     intraweb-${ACTION} ;;
   *)
     usage-bad-action ;;# will exit process

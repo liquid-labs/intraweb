@@ -6,7 +6,7 @@ ORGANIZATION=""
 SITE_SETTINGS_FILE=""
 # end cli option globals
 
-VALID_ACTIONS="add list build deploy run update-settings"
+VALID_ACTIONS="add list build deploy remove run update-settings"
 INTRAWEB_SETTINGS="ORGANIZATION \
 PROJECT \
 BUCKET \
