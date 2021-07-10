@@ -9,6 +9,17 @@ intraweb-deploy() {
   [[ -n "${NO_DEPLOY_CONTENT:-}" ]] || \
     gsutil -m rsync -r "${CONTENT_SOURCE}" gs://${BUCKET}
 
-  [[ -n "${NO_DEPLOY_APP:-}" ]] || \
-    gcloud app deploy ./src/appengine/app.yaml ${APP_DEPLOY_OPTS}
+  [[ -n "${NO_DEPLOY_APP:-}" ]] || {
+    local APP_ENGINE_DIR
+    APP_ENGINE_DIR="$(dirname $(real_path "${0}"))/appengine"
+
+    local APP_YAML="${APP_ENGINE_DIR}/app.yaml"
+    local ENV_YAML="${APP_ENGINE_DIR}/env-variables.yaml"
+
+    cat <<EOF > "${ENV_YAML}"
+env_variables:
+  BUCKET: ${BUCKET}
+EOF
+    gcloud app deploy "${APP_YAML}" ${APP_DEPLOY_OPTS}
+  }
 }
