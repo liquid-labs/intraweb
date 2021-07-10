@@ -32,19 +32,10 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 const readBucketFile = async ({ path, res }) => {
-  console.log(`Processing '${path}' as a file...`)
-  /*
-  bucket.exists(path, (err, exists) => {
-    if (err) {
-      res.setSsend(err).end();
-      return;
-    }
-
-    if (!exists) {
-      res.send(`No such file: ${path}`).end();
-    }
-    else {*/
-    try {
+  console.log(`Processing '${path}' as a file...`);
+  try {
+    const [ exists ] = await bucket.exists(path);
+    if (exists) {
       const file = await bucket.file(path);
       console.log(`Data for '${path}'; setting up stream.`)
       const reader = file.createReadStream();
@@ -56,18 +47,22 @@ const readBucketFile = async ({ path, res }) => {
       reader.pipe(res);
       console.log(`Processing complete for '${path}'.`);
     }
-    catch (err) {
-      console.log(`Caught exception while processing '${path}'.`);
-      req.status(500).send(`Error reading: ${path}`).end()
-      next(err)
+    else {
+      console.log(`No file at '${path}'; sending 404.`);
+      res.status(404).send(`No such file: '${path}'`).end();
     }
-    /*}
-  })*/
+  }
+  catch (err) {
+    console.log(`Caught exception while processing '${path}'.`);
+    req.status(500).send(`Error reading: ${path}`).end()
+    next(err)
+  }
 }
 
 const indexerOptions = {
   delimiter: '/',
-  includeTrailingDelimiter: true
+  includeTrailingDelimiter: true,
+  autoPagination: false // ?? necessary to see sub-folders
 }
 
 const renderFiles = ({ path, files, res }) => {
@@ -109,39 +104,22 @@ const renderFiles = ({ path, files, res }) => {
 
 const indexBucket = async ({ path, res }) => {
   console.log(`Processing '${path}' as index listing...`)
-  const query = Object.assign({ prefix: path }, indexerOptions)
-  // let files = [];
 
   try {
+    const query = Object.assign({ prefix: path }, indexerOptions)
     const [files] = await bucket.getFiles(query);
-    console.log(`Retrieved ${files && files.length} files.`);
-
-    renderFiles({ path, files, res });
+    if (!files || files.length === 0) {
+      console.log(`No files at '${path}'; treating as 404.`)
+      res.status(404).send(`No such file: '${path}'`).end();
+    }
+    else {
+      console.log(`Retrieved ${files && files.length} files.`);
+      renderFiles({ path, files, res });
+    }
   }
   catch (e) {
     res.status(500).send(`Explosion! ${e}`).end();
   }
-/*
-  const indexQueryHandler = (err, filesPage, nextQuery, apiResponse) => {
-    if (err) {
-      res.status(500).send(`Explosion! ${err}`).end();
-      console.error(err);
-      return; // Error?! We are done.
-    }
-    // else no errors here!
-
-    if (nextQuery) { // More results exist.
-      bucket.getFiles(nextQuery, indexQueryHandler);
-    }
-    else { // time to render
-      renderFiles(path, files, res, { err, filesPage, nextQuery, apiResponse });
-    }
-
-    files = files.concat(pageFiles);
-  }
-
-  bucket.getFiles(query, indexQueryHandler);
-  */
 }
 
 // request processing setup
