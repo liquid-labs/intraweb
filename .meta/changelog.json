@@ -54,5 +54,19 @@
     "involvedProjects": [
       "@liquid-labs/intraweb"
     ]
+  },
+  {
+    "issues": [
+      "https://github.com/Liquid-Labs/intraweb/issues/19"
+    ],
+    "branch": "2021.07.09-zane@liquid-labs.com-use_configured_bucket_in",
+    "startTimestampLocal": "2021-07-09-2132 UTC",
+    "branchFrom": "3c4aba22bbd3d1b9ff9d2e0a11164bfaffabf5ba",
+    "description": "Use configured bucket in app",
+    "workInitiator": "zane@liquid-labs.com",
+    "branchInitiator": "zane@liquid-labs.com",
+    "involvedProjects": [
+      "@liquid-labs/intraweb"
+    ]
   }
 ]
