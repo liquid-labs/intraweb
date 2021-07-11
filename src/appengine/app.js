@@ -34,6 +34,7 @@ const PORT = process.env.PORT || 8080;
 const readBucketFile = async ({ path, res }) => {
   console.log(`Processing '${path}' as a file...`);
   try {
+    // first, is there an index.html?
     const [ exists ] = await bucket.exists(path);
     if (exists) {
       const file = await bucket.file(path);
@@ -81,16 +82,10 @@ const renderFiles = ({ path, files, res }) => {
   <h2>Files</h2>
   ${files.length} total
   <ul>\n`;
+
   files.forEach(file => {
     html += `<li>${file.name}</li>`;
   });
-/*  const nest = '      ';
-  for (const file of files) {
-    const label = file.name();
-    const url = `./${label}`;
-
-    html += `${nest}<li><a href="${url}">${label}</li>\n`
-  }*/
 
   html += `
     </ul>
@@ -144,18 +139,8 @@ const commonProcessor = (render) => (req, res) => {
 
 const fileRegex = /.*\.[^./]+$/;
 app.get(fileRegex, commonProcessor(readBucketFile));
-
 // if it's not a file, maybe it's a bucket.
 app.get('*', commonProcessor(indexBucket));
-
-/*
-app.get('/', (req, res) => readBucketFile('index.html', res));
-
-app.get('/*', (req, res) => {
-  const path = req.path.replace(deslasher, '');
-  readBucketFile(path, res);
-})
-*/
 
 // start the server
 app.listen(PORT, () => {
