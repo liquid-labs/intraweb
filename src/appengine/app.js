@@ -16,6 +16,8 @@
 */
 'use strict';
 
+const asyncHandler = require('express-async-handler');
+
 const projectId = process.env.GOOGLE_CLOUD_PROJECT;
 console.log(`Servinging project ${projectId}`);
 
@@ -25,7 +27,7 @@ const storage = new Storage();
 
 const bucketId = process.env.BUCKET;
 if (!bucketId) {
-  throw new Error("No 'BUCKET_ID' environment variable found (or is empty).")
+  throw new Error("No 'BUCKET' environment variable found (or is empty).")
 }
 // Useful info for the logs.
 console.log(`Connecting to bucket: ${bucketId}`);
@@ -41,9 +43,9 @@ const commonImageFiles = /\.(jpg|png|gif)$/i;
 const readBucketFile = async ({ path, res }) => {
   try {
     // first, check if file exists.
-    const [ exists ] = await bucket.exists(path);
-    if (exists) { // then read the file
-      const file = await bucket.file(path);
+    const file = bucket.file(path);
+    const [ exists ] = await file.exists();
+    if (exists) {
       const reader = file.createReadStream();
       reader.on('error', (err) => {
         console.error(`Error while reading file: ${err}`);
@@ -64,7 +66,8 @@ const readBucketFile = async ({ path, res }) => {
   }
   catch (err) {
     console.error(`Caught exception while processing '${path}'.`);
-    req.status(500).send(`Error reading: ${path}`).end()
+    req.status(500).send(`Error reading: ${path}`);
+    return next(err); // for express error handling
   }
 }
 
@@ -87,7 +90,7 @@ const renderBreadcrumbs = (path) => {
       html += `<a href="${Array(pathBitsLength - i).fill('..').join('/')}">${pathBits[i]}/</a> `
     }
   }
-  
+
   return html;
 }
 
@@ -149,59 +152,70 @@ const indexerQueryOptions = {
   autoPaginate: false // ?? necessary to see sub-folders
 }
 
-const indexBucket = ({ path, res }) => {
-  if (path !== '' && !path.match(endSlash)) {
-    res.redirect(301, `${path}/`).end();
-  }
-
-  let folders = [];
-  const query = Object.assign({ prefix: path }, indexerQueryOptions)
-
-  // OK, the Cloud Storage API (as of v5) is finicky and will only show you files in the 'await' version, e.g.:
-  //
-  // const [ files ] = await bucket.getFiles(query)
-  //
-  // In order to get the 'folders', you have to do to things:
-  // 1) Inculde 'autoPaginate' in the query and
-  // 2) Call using a callback method.
-  //
-  // In this form, you get to see the API response, which allows you to look at the 'prefixes' within the current search
-  // prefix. These can be mapped to logical sub-folders in our bucket scheme.
-  const indexPager = (err, files, nextQuery, apiResponse) => {
-    if (err) {
-      res.setStatus(500).send(`Error while processing results: ${err}`).end();
-    }
-    // all good!
-    if (apiResponse.prefixes && apiResponse.prefixes.length > 0) {
-      folders = folders.concat(apiResponse.prefixes);
-    }
-
-    if (nextQuery) {
-      bucket.getFiles(nextQuery, indexPager);
-    }
-    else { // we've built up all the folders
-      // If there's nothing here, treat as 404
-      if ((!files || files.length === 0) && folders.length === 0) {
-        res.status(404).send(`No such folder: '${path}'`).end();
-      }
-      else {
-        renderFiles({ path, files, folders, res });
-      }
-    }
-  }
-
-  // here's where we actually kick everything off by doing the search.
+const indexBucket = async ({ path, res }) => {
   try {
+    // We expect the root path to be ''; all others should end with a '/'
+    if (path !== '' && !path.match(endSlash)) {
+      res.redirect(301, `${path}/`).end();
+    }
+
+    const indexPath = `${path}index.html`;
+    console.log(`indexPath is: ${indexPath}`);
+    const file = bucket.file(indexPath);
+    const [ exists ] = await file.exists();
+    if (exists) {
+      return readBucketFile({ path: indexPath, res });
+    }
+
+    let folders = [];
+    const query = Object.assign({ prefix: path }, indexerQueryOptions)
+
+    // OK, the Cloud Storage API (as of v5) is finicky and will only show you files in the 'await' version, e.g.:
+    //
+    // const [ files ] = await bucket.getFiles(query)
+    //
+    // In order to get the 'folders', you have to do to things:
+    // 1) Inculde 'autoPaginate' in the query and
+    // 2) Call using a callback method.
+    //
+    // In this form, you get to see the API response, which allows you to look at the 'prefixes' within the current search
+    // prefix. These can be mapped to logical sub-folders in our bucket scheme.
+    const indexPager = (err, files, nextQuery, apiResponse) => {
+      if (err) {
+        res.setStatus(500).send(`Error while processing results: ${err}`).end();
+      }
+      // all good!
+      if (apiResponse.prefixes && apiResponse.prefixes.length > 0) {
+        folders = folders.concat(apiResponse.prefixes);
+      }
+
+      if (nextQuery) {
+        bucket.getFiles(nextQuery, indexPager);
+      }
+      else { // we've built up all the folders
+        // If there's nothing here, treat as 404
+        if ((!files || files.length === 0) && folders.length === 0) {
+          res.status(404).send(`No such folder: '${path}'`).end();
+        }
+        else {
+          renderFiles({ path, files, folders, res });
+        }
+      }
+    }
+
+    // here's where we actually kick everything off by doing the search.
     bucket.getFiles(query, indexPager);
-  }
+  } // try
   catch (e) {
-    res.status(500).send(`Explosion! ${e}`).end();
+    res.status(500).send(`Explosion! ${e}`);
+    return next(e); // for express error handling
   }
 }
 
 // request processing setup
 
-const commonProcessor = (render) => (req, res) => {
+// async because our handsers are async
+const commonProcessor = (render) => async (req, res) => {
   // Cloud storage doesn't like an initial '/', so we remove any.
   const path = decodeURIComponent(req.path.replace(startSlash, ''));
 
@@ -214,14 +228,21 @@ const commonProcessor = (render) => (req, res) => {
   }
   catch (e) {
     console.error(`Exception while rendering: ${e}`);
-    res.status(500).send(`Explosion: ${err}`).end();
+    res.status(500).send(`Explosion: ${err}`);
+    return next(e);
   }
 }
 
 const fileRegex = /.*\.[^./]+$/;
-app.get(fileRegex, commonProcessor(readBucketFile));
+app.get(fileRegex, asyncHandler(async (req, res) => {
+  const handler = commonProcessor(readBucketFile);
+  await handler(req, res);
+}));
 // if it's not a file, maybe it's a bucket.
-app.get('*', commonProcessor(indexBucket));
+app.get('*', asyncHandler(async (req, res) => {
+  const handler = commonProcessor(indexBucket);
+  await handler(req, res);
+}));
 
 // start the server
 app.listen(PORT, () => {
