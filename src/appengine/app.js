@@ -38,6 +38,8 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+const marked = require('marked');
+
 const commonImageFiles = /\.(jpg|png|gif)$/i;
 
 const readBucketFile = async ({ path, res }) => {
@@ -58,7 +60,16 @@ const readBucketFile = async ({ path, res }) => {
         res.writeHead(200,{'content-type':`image/${imageMatchResults[1].toLowerCase()}`});
       }
 
-      reader.pipe(res);
+      if (path.endsWith('.md')) {
+        let markdown = '';
+        reader.on('data', (d) => { markdown += d; })
+          .on('end', () => {
+            res.send(marked(markdown));
+          });
+      }
+      else {
+        reader.pipe(res);
+      }
     }
     else { // No such file, send 404
       res.status(404).send(`No such file: '${path}'`).end();
@@ -153,7 +164,7 @@ const indexerQueryOptions = {
 }
 
 const indexBucket = async ({ path, res }) => {
-  try {
+  try { // TODO: I think now that we asyncHandler, we can forgo generic try-catch blocks
     // We expect the root path to be ''; all others should end with a '/'
     if (path !== '' && !path.match(endSlash)) {
       res.redirect(301, `${path}/`).end();
@@ -234,15 +245,9 @@ const commonProcessor = (render) => async (req, res) => {
 }
 
 const fileRegex = /.*\.[^./]+$/;
-app.get(fileRegex, asyncHandler(async (req, res) => {
-  const handler = commonProcessor(readBucketFile);
-  await handler(req, res);
-}));
+app.get(fileRegex, asyncHandler(commonProcessor(readBucketFile)));
 // if it's not a file, maybe it's a bucket.
-app.get('*', asyncHandler(async (req, res) => {
-  const handler = commonProcessor(indexBucket);
-  await handler(req, res);
-}));
+app.get('*', asyncHandler(commonProcessor(indexBucket)));
 
 // start the server
 app.listen(PORT, () => {
