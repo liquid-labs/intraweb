@@ -40,7 +40,27 @@ const PORT = process.env.PORT || 8080;
 
 const marked = require('marked');
 
+const fileRegex = /.*\.[^./]+$/;
 const commonImageFiles = /\.(jpg|png|gif)$/i;
+
+const htmlOpen = (path) => `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <title>${path}</title>
+    <!--[if lt IE 9]>
+    <script src="//html5shim.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+<body>`
+
+const htmlEnd = () => `
+</body>
+</html>`;
+
+const markedOptions = {
+  smartLists: true
+}
 
 const readBucketFile = async ({ path, res }) => {
   try {
@@ -64,7 +84,8 @@ const readBucketFile = async ({ path, res }) => {
         let markdown = '';
         reader.on('data', (d) => { markdown += d; })
           .on('end', () => {
-            res.send(marked(markdown));
+            const breadcrumbs = renderBreadcrumbs(path);
+            res.send(`${htmlOpen(path)}\n\n${breadcrumbs}\n\n${marked(markdown, markedOptions)}\n\n${breadcrumbs}\n\n${htmlEnd()}`);
           });
       }
       else {
@@ -85,44 +106,50 @@ const readBucketFile = async ({ path, res }) => {
 const startSlash = /^\//;
 const endSlash = /\/$/;
 
-const renderBreadcrumbs = (path) => {
-  let html = "";
-  if (path !== "") {
-    // We remove the end slash to avoid an empty array element.
-    const pathBits = path.replace(endSlash, '').split('/');
-    // Each path bit represents a step back, but we step back into the prior element. E.g., if we see path "foo/bar",
-    // so stepping back one takes us to foo and stepping back two takes us to the root. So we unshift a root element and
-    // pop the last element to make everything match up.
-    pathBits.unshift('&lt;root&gt;');
-    pathBits.pop();
-    // Now, we can generate the '../' step backs based on the depth of the path and the index of each elemeent.
-    const pathBitsLength = pathBits.length;
-    for (let i = 0; i < pathBits.length; i += 1) {
-      html += `<a href="${Array(pathBitsLength - i).fill('..').join('/')}">${pathBits[i]}/</a> `
+const renderBreadcrumbs = (path, options) => {
+  let output = "";
+  if (!path || path === '') { return output; }
+
+  const { format='html' } = options || {};
+
+  // We remove the end slash to avoid an empty array element.
+  const pathBits = path.replace(endSlash, '').split('/');
+  // Each path bit represents a step back, but we step back into the prior element. E.g., if we see path "foo/bar",
+  // so stepping back one takes us to foo and stepping back two takes us to the root. So we unshift a root element and
+  // pop the last element to make everything match up.
+  pathBits.unshift('&lt;root&gt;');
+  pathBits.pop();
+  const pathBitsLength = pathBits.length;
+  // Breadcrumbs for a file end with the current dir and then move back. For a directory, you're stepping back in each
+  // iteration.
+  const linkBits = path.match(fileRegex)
+    ? pathBits.map((b, i) => (i + 1) === pathBitsLength
+        ? '.'
+        : Array(pathBitsLength - (i + 1)).fill('..').join('/')
+      )
+    : pathBits.map((b, i) => Array(pathBitsLength - i).fill('..').join('/'));
+
+  for (let i = 0; i < pathBits.length; i += 1) {
+    if (format === 'markdown') {
+      output += `[${pathBits[i]}/](${linkBits[i]}) `
+    }
+    else { // default to HTML
+      output += `<a href="${linkBits[i]}">${pathBits[i]}/</a> `
     }
   }
 
-  return html;
+  return output;
 }
 
 const renderFiles = ({ path, files, folders, res }) => {
   // Our 'path' comes in full relative from the root. However, we want to show only the relative bits.
   const deprefixer = new RegExp(`${path}/?`);
   // open up with some boilerplace HTML
-  let html =`<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <title>${path}</title>
-  <!--[if lt IE 9]>
-  <script src="//html5shim.googlecode.com/svn/trunk/html5.js"></script>
-  <![endif]-->
-</head>
-<body>
-  <h1>${path}</h1>
+  let html =`${htmlOpen(path)}
   <div id="breadcrumbs">
     ${renderBreadcrumbs(path)}
-  </div>`;
+  </div>
+  <h1>${path}</h1>`;
 
   if (folders.length > 0) {
     html += `
@@ -150,9 +177,7 @@ const renderFiles = ({ path, files, folders, res }) => {
 
     html += `  </ul>`;
   }
-  html += `
-</body>
-</html>`;
+  html += htmlEnd();
 
   res.send(html).end();
 }
@@ -244,7 +269,6 @@ const commonProcessor = (render) => async (req, res) => {
   }
 }
 
-const fileRegex = /.*\.[^./]+$/;
 app.get(fileRegex, asyncHandler(commonProcessor(readBucketFile)));
 // if it's not a file, maybe it's a bucket.
 app.get('*', asyncHandler(commonProcessor(indexBucket)));
