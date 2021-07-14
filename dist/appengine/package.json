@@ -1,0 +1,24 @@
+{
+  "name": "@liquid-labs/intraweb-appengine",
+  "description": "App Engine sub-component of intraweb project.",
+  "version": "1.0-prototype.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "author": "Liquid Labs, LLC",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/Liquid-Labs/intraweb.git"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^5.8.5",
+    "express": "^4.17.1",
+    "express-async-handler": "^1.1.4",
+    "marked": "^2.1.3"
+  }
+}
