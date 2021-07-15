@@ -4,7 +4,6 @@
 * Serves files from a Cloud Storage bucket as if from a local filesystem.
 *
 * The basic flow is:
-
 * 1. Determine bucket config and connect.
 * 2. Listen.
 * 3. Examine incoming requests.
@@ -12,7 +11,10 @@
 *   3.2 Everything else is assumed to be a directory reference. Pass handling to the directory indexer.
 * 4. Back to listening.
 *
+* ## References
 *
+* * Error handling and handling of asynchronous flow informed primarily by [Using Async/await in
+*   Express](https://zellwk.com/blog/async-await-express/) from July 2021.
 */
 'use strict';
 
