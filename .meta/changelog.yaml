@@ -1,0 +1,75 @@
+- issues:
+    - https://github.com/Liquid-Labs/intraweb/issues/19
+  branch: 2021.07.09-zane@liquid-labs.com-use_configured_bucket_in
+  branchFrom: 3c4aba22bbd3d1b9ff9d2e0a11164bfaffabf5ba
+  workInitiator: zane@liquid-labs.com
+  branchInitiator: zane@liquid-labs.com
+  involvedProjects:
+    - "@liquid-labs/intraweb"
+  startTimestamp: 2021-07-09T21:32:00.000Z
+  startEpochMillis: 1625866320000
+  changeNotes:
+    - Use configured bucket in app
+  securityNotes: []
+  drpBcpNotes: []
+  backoutNotes: []
+- issues:
+    - https://github.com/Liquid-Labs/intraweb/issues/13
+  branch: 2021.07.09-zane@liquid-labs.com-add_content_source
+  branchFrom: 0b1485c19c91dd25253d451bb3a93bc0495d705c
+  workInitiator: zane@liquid-labs.com
+  branchInitiator: zane@liquid-labs.com
+  involvedProjects:
+    - "@liquid-labs/intraweb"
+  startTimestamp: 2021-07-09T16:38:00.000Z
+  startEpochMillis: 1625848680000
+  changeNotes:
+    - Add content source
+  securityNotes: []
+  drpBcpNotes: []
+  backoutNotes: []
+- issues:
+    - https://github.com/Liquid-Labs/intraweb/issues/2
+  branch: 2021.07.08-zane@liquid-labs.com-save_inferred_settings
+  branchFrom: 42d9c5fb0d37cbc42ca8dbaec65877c48271f35e
+  workInitiator: zane@liquid-labs.com
+  branchInitiator: zane@liquid-labs.com
+  involvedProjects:
+    - "@liquid-labs/intraweb"
+  startTimestamp: 2021-07-08T15:23:00.000Z
+  startEpochMillis: 1625757780000
+  changeNotes:
+    - Save inferred settings
+  securityNotes: []
+  drpBcpNotes: []
+  backoutNotes: []
+- issues:
+    - https://github.com/Liquid-Labs/intraweb/issues/4
+  branch: 2021.07.08-zane@liquid-labs.com-fix_install
+  branchFrom: b55892c114111b9749a8c91994aa56c04c75e101
+  workInitiator: zane@liquid-labs.com
+  branchInitiator: zane@liquid-labs.com
+  involvedProjects:
+    - "@liquid-labs/intraweb"
+  startTimestamp: 2021-07-08T15:21:00.000Z
+  startEpochMillis: 1625757660000
+  changeNotes:
+    - Fix install
+  securityNotes: []
+  drpBcpNotes: []
+  backoutNotes: []
+- issues:
+    - https://github.com/Liquid-Labs/intraweb/issues/1
+  branch: 2021.06.29-zane@liquid-labs.com-first_draft
+  branchFrom: f04d5d7dbe526941222502e11c1a65b7b4ac26de
+  workInitiator: zane@liquid-labs.com
+  branchInitiator: zane@liquid-labs.com
+  involvedProjects:
+    - "@liquid-labs/intraweb"
+  startTimestamp: 2021-06-29T17:05:00.000Z
+  startEpochMillis: 1624986300000
+  changeNotes:
+    - First draft.
+  securityNotes: []
+  drpBcpNotes: []
+  backoutNotes: []
