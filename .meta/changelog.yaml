@@ -1,3 +1,18 @@
+- startTimestamp: 2021-08-31T01:11:26.203Z
+  startEpochMillis: 1630372286203
+  issues:
+    - https://github.com/Liquid-Labs/intraweb/issues/25
+  branch: 2021.08.30-zane@liquid-labs.com-verify_access_token
+  branchFrom: 5c958d3506ed7044c8de50af6e1b1334eec96b1e
+  workInitiator: zane@liquid-labs.com
+  branchInitiator: zane@liquid-labs.com
+  involvedProjects:
+    - "@liquid-labs/intraweb"
+  changeNotes:
+    - Verify access token
+  securityNotes: []
+  drpBcpNotes: []
+  backoutNotes: []
 - issues:
     - https://github.com/Liquid-Labs/intraweb/issues/19
   branch: 2021.07.09-zane@liquid-labs.com-use_configured_bucket_in
