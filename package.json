@@ -1,6 +1,6 @@
 {
   "name": "@liquid-labs/intraweb",
-  "version": "1.0.0-alpha.0",
+  "version": "1.0.0-alpha.1",
   "description": "Creates a secure static intraweb server using OAuth2 Proxy, gcloud, and Google authentication.",
   "scripts": {
     "build": "make",
