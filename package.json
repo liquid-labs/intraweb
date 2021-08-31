@@ -4,6 +4,8 @@
   "description": "Creates a secure static intraweb server using OAuth2 Proxy, gcloud, and Google authentication.",
   "scripts": {
     "build": "make",
+    "lint": "make lint",
+    "lint:fix": "make lint-fix",
     "start": "echo 'WARNING: the local app is not currently set up to connect properly to cloud services and the local service is of limited testing use.' && cd src/appengine && node app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
