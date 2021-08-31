@@ -129,3 +129,6 @@ deploy-test-content: dist/intraweb.sh .deploy-content
 
 lint:
 	cd src/appengine && $(CATALYST_SCRIPTS) lint
+
+lint-fix:
+	cd src/appengine && $(CATALYST_SCRIPTS) lint-fix
