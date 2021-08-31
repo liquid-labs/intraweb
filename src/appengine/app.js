@@ -213,7 +213,6 @@ const indexBucket = async({ path, res, next }) => {
     }
 
     const indexPath = `${path}index.html`
-    console.log(`indexPath is: ${indexPath}`)
     const file = bucket.file(indexPath)
     const [exists] = await file.exists()
     if (exists) {
