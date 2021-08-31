@@ -16,34 +16,51 @@
 * * Error handling and handling of asynchronous flow informed primarily by [Using Async/await in
 *   Express](https://zellwk.com/blog/async-await-express/) from July 2021.
 */
+
+import asyncHandler from 'express-async-handler'
+import express from 'express'
+import gcpMetadata from 'gcp-metadata'
+import marked from 'marked'
+import { Storage } from '@google-cloud/storage'
+
+import { setupAccessLib } from './lib/access'
+
 'use strict';
 
-const asyncHandler = require('express-async-handler');
+// Get basic project info
+const projectId = process.env.GOOGLE_CLOUD_PROJECT
+console.log(`Starting server for project '${projectId}'...`)
 
-const projectId = process.env.GOOGLE_CLOUD_PROJECT;
-console.log(`Servinging project ${projectId}`);
+// have to use the 'metadata' server for project number
+const isAvailable = await gcpMetadata.isAvailable()
+if (!isAvailable) { // TODO: Support fallback modes and 'unverified' access when configured for it
+  throw new Error('Metadata not available, cannot proceed.')
+}
+console.log(`Metadata available: ${isAvailable}`)
+
+const projectNumber = await gcpMetadata.project('numeric-project-id')
+
+// setup access checker
+const accessLib = setupAccessLib({ projectId, projectNumber })
 
 // setup storage stuff
-const { Storage } = require('@google-cloud/storage');
-const storage = new Storage();
+const storage = new Storage()
 
-const bucketId = process.env.BUCKET;
+const bucketId = process.env.BUCKET
 if (!bucketId) {
   throw new Error("No 'BUCKET' environment variable found (or is empty).")
 }
 // Useful info for the logs.
-console.log(`Connecting to bucket: ${bucketId}`);
-const bucket = storage.bucket(bucketId);
+console.log(`Connecting to bucket: ${bucketId}`)
+const bucket = storage.bucket(bucketId)
 
 // setup web server stuff
-const express = require('express');
-const app = express();
-const PORT = process.env.PORT || 8080;
+const app = express()
+app.set('trust proxy', true)
+const PORT = process.env.PORT || 8080
 
-const marked = require('marked');
-
-const fileRegex = /.*\.[^./]+$/;
-const commonImageFiles = /\.(jpg|png|gif)$/i;
+const fileRegex = /.*\.[^./]+$/
+const commonImageFiles = /\.(jpg|png|gif)$/i
 
 const htmlOpen = (path) => `<!doctype html>
 <html>
@@ -250,10 +267,24 @@ const indexBucket = async ({ path, res }) => {
   }
 }
 
+//
+
 // request processing setup
 
 // async because our handsers are async
 const commonProcessor = (render) => async (req, res) => {
+  let userEmail = null
+  try {
+    const ticket = await accessLib.verifyToken(req)
+    userEmail = ticket.payload.email
+    // console.log(`Requesting user: ${userEmail}`)
+  }
+  catch (e) {
+    console.error(`Exception while verifying access: ${e}`);
+    res.status(401).send(`Request authorization token could not be verified.\n${e}`);
+    return next(e);
+  }
+
   // Cloud storage doesn't like an initial '/', so we remove any.
   const path = decodeURIComponent(req.path.replace(startSlash, ''));
 
@@ -266,7 +297,7 @@ const commonProcessor = (render) => async (req, res) => {
   }
   catch (e) {
     console.error(`Exception while rendering: ${e}`);
-    res.status(500).send(`Explosion: ${err}`);
+    res.status(500).send(`Exception encountered while rendering result: ${e}`);
     return next(e);
   }
 }
@@ -281,4 +312,4 @@ app.listen(PORT, () => {
   console.log('Press Ctrl+C to quit.');
 });
 
-module.exports = app;
+export default app
