@@ -25,8 +25,6 @@ import { Storage } from '@google-cloud/storage'
 
 import { setupAccessLib } from './lib/access'
 
-'use strict'
-
 // Get basic project info
 const projectId = process.env.GOOGLE_CLOUD_PROJECT
 console.log(`Starting server for project '${projectId}'...`)
@@ -81,7 +79,7 @@ const markedOptions = {
   smartLists : true
 }
 
-const readBucketFile = async({ path, res }) => {
+const readBucketFile = async({ path, res, next }) => {
   try {
     // first, check if file exists.
     const file = bucket.file(path)
@@ -117,7 +115,7 @@ const readBucketFile = async({ path, res }) => {
   }
   catch (err) {
     console.error(`Caught exception while processing '${path}'.`)
-    req.status(500).send(`Error reading: ${path}`)
+    res.status(500).send(`Error reading: ${path}`)
     return next(err) // for express error handling
   }
 }
@@ -207,7 +205,7 @@ const indexerQueryOptions = {
   autoPaginate             : false // ?? necessary to see sub-folders
 }
 
-const indexBucket = async({ path, res }) => {
+const indexBucket = async({ path, res, next }) => {
   try { // TODO: I think now that we asyncHandler, we can forgo generic try-catch blocks
     // We expect the root path to be ''; all others should end with a '/'
     if (path !== '' && !path.match(endSlash)) {
@@ -272,11 +270,12 @@ const indexBucket = async({ path, res }) => {
 // request processing setup
 
 // async because our handsers are async
-const commonProcessor = (render) => async(req, res) => {
-  let userEmail = null
+const commonProcessor = (render) => async(req, res, next) => {
+  // let userEmail = null
   try {
-    const ticket = await accessLib.verifyToken(req)
-    userEmail = ticket.payload.email
+    // const ticket = await accessLib.verifyToken(req)
+    await accessLib.verifyToken(req)
+    // userEmail = ticket.payload.email
     // console.log(`Requesting user: ${userEmail}`)
   }
   catch (e) {
@@ -293,7 +292,7 @@ const commonProcessor = (render) => async(req, res) => {
   })
 
   try {
-    render({ path, res })
+    render({ path, res, next })
   }
   catch (e) {
     console.error(`Exception while rendering: ${e}`)

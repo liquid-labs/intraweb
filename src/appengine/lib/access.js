@@ -6,9 +6,12 @@ const setupAccessLib = ({ projectId, projectNumber }) => {
     // Expected Audience for App Engine.
     expectedAudience = `/projects/${projectNumber}/apps/${projectId}`
   }
-  else if (projectNumber && backendServiceId) { // for future ref; not used here
+  /* else if (projectNumber && backendServiceId) { // for future ref; not used here
     // Expected Audience for Compute Engine
     expectedAudience = `/projects/${projectNumber}/global/backendServices/${backendServiceId}`
+  } */
+  else {
+    throw new Error('Could not determine \'expected audience\' for JWT verification.')
   }
 
   return {
