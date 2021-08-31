@@ -11,3 +11,4 @@
 * Use configured bucket in app _(zane@liquid-labs.com; 2021-07-09T21:32:00.000Z)_
 * Verify access token _(zane@liquid-labs.com; 2021-08-31T01:11:26.203Z)_
 * _**hotfix**_: wedge in basic styling _(zane@liquid-labs.com; 2021-08-31T02:49:27.000Z)_
+* _**hotfix**_: updated CHANGELOGE.md for release (by liq) _(zane@liquid-labs.com; 2021-08-31T02:49:46.000Z)_
