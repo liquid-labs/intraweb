@@ -5,7 +5,7 @@
 
 default: all
 
-.PHONY: all clean deploy-test deploy-test-content
+.PHONY: all clean deploy-test deploy-test-content lint lint-fix
 
 ### /end meta configuration
 
@@ -16,6 +16,7 @@ default: all
 # executables
 NPM_BIN:=$(shell npm bin)
 BASH_ROLLUP:=$(NPM_BIN)/bash-rollup
+CATALYST_SCRIPTS:=$(shell cd src/appengine && npm bin)/catalyst-scripts
 
 # source files
 GOOGLE_LIBS:=$(shell find src/gcloud/lib -name '*.sh')
@@ -28,18 +29,27 @@ SOURCEABLE_BUNDLES:=$(shell find src/gcloud/actions -name "*.sh" -not -name "inc
 SOURCEABLE_TEMPLATE:=src/gcloud/sources/sourceable-template.sh
 
 # TODO: does App Engine use package-lack.json or not?
-APPENGINE_FILES:=$(shell find src/appengine -type f\
+APPENGINE_NON_JS_FILES:=$(shell find src/appengine -type f\
+	-not -name "*.js"\
 	-not -path "*node_modules/*"\
-	-not -name "env-variables.yaml")
+	-not -name "env-variables.yaml"\
+	-not -path "*.yalc*" -not -name "yalc.lock")
+# the 'main' app.js is specified on it'sown, so excluded here.
+APPENGINE_JS_SRC:=$(shell find src/appengine -type f -name "*.js"\
+	-not -name "app.js"\
+	-not -path "*node_modules/*")
+DIST_APP_NON_JS:=$(patsubst src/%, dist/%, $(APPENGINE_NON_JS_FILES))
+DIST_APP=dist/appengine/app.js
 HELLO_WORLD_WEB_FILES:=$(shell find src/test/hello-world-web -type f)
 
 # intermediate build resources
 LINKS:=.build/gcloud/lib .build/gcloud/actions
 
 # distribution files
-DIST_SCRIPTS:=intraweb $(patsubst src/gcloud/actions/%.sh,%,$(SOURCEABLE_BUNDLES))
-DIST_APP:=$(patsubst src/%, dist/%, $(APPENGINE_FILES))
-DIST_FILES:=$(patsubst %, dist/%.sh, $(DIST_SCRIPTS)) $(DIST_APP)
+BASH_SCRIPTS:=intraweb $(patsubst src/gcloud/actions/%.sh,%,$(SOURCEABLE_BUNDLES))
+DIST_SCRIPTS:=$(patsubst %, dist/%.sh, $(DIST_SCRIPTS))
+
+DIST_FILES:=$(DIST_SCRIPTS) $(DIST_APP_NON_JS) $(DIST_APP)
 
 ### /end variables
 
@@ -78,10 +88,13 @@ $(LINKS): .build/%: src/%
 $(patsubst src/gcloud/actions/%, dist/%, $(SOURCEABLE_BUNDLES)): dist/%: .build/gcloud/sources/% src/gcloud/actions/% $(GOOGLE_LIBS) | $(LINKS)
 	$(BASH_ROLLUP) $< $@
 
-### copy the App Engine files to dist
-$(DIST_APP): dist/%: src/%
+### build the dist-ready AppEngine
+$(DIST_APP_NON_JS): dist/%: src/%
 	mkdir -p $(dir $@)
 	cp $< $@
+
+$(DIST_APP): dist/%: src/% $(APPENGINE_JS_SRC) src/appengine/package.json
+	cd src/appengine && JS_FILE="$(realpath $<)" JS_OUT="$(realpath $@)" $(CATALYST_SCRIPTS) build
 
 ######
 ### test directives
@@ -104,7 +117,7 @@ deploy-test: dist/intraweb.sh .deploy-app .deploy-content
 deploy-test-content: dist/intraweb.sh .deploy-content
 	./dist/intraweb.sh --assume-defaults --no-deploy-app deploy || rm .deploy-content
 
-.deploy-app: $(DIST_APP)
+.deploy-app: $(DIST_APP) $(DIST_APP_NON_JS)
 	$(eval DEPLOY_APP=true)
 	touch $@
 
@@ -113,3 +126,9 @@ deploy-test-content: dist/intraweb.sh .deploy-content
 	touch $@
 
 ### /end build directives
+
+lint:
+	cd src/appengine && $(CATALYST_SCRIPTS) lint
+
+lint-fix:
+	cd src/appengine && $(CATALYST_SCRIPTS) lint-fix
