@@ -475,6 +475,15 @@ pre code, pre tt {
   background-color: transparent;
   border: none;
 }
+
+/* ----- mine: */
+samp {
+  border: 1px solid #cccccc;
+  display: inline-block;
+  background-color: #f8f8f8;
+  border-radius: 3px;
+  padding: 0 2px;
+}
     </style>
   </head>
 <body>`
