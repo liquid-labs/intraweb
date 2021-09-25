@@ -735,7 +735,9 @@ app.get('*', asyncHandler(commonProcessor(indexBucket)))
 // start the server
 app.listen(PORT, () => {
   console.log(`App listening on port ${PORT}`)
-  console.log('Press Ctrl+C to quit.')
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`To quit server:\nkill ${process.pid}`)
+  }
 })
 
 export default app
