@@ -19,38 +19,48 @@
 
 import asyncHandler from 'express-async-handler'
 import express from 'express'
-import gcpMetadata from 'gcp-metadata'
 import marked from 'marked'
+// GCP AppEngine and CloudStorage support
+import gcpMetadata from 'gcp-metadata'
 import { Storage } from '@google-cloud/storage'
+import { setupAccessLib } from './lib/access.js' // the '.js' allows us to run directly with node
+// local file support
+import { localAccessLib, localBucket } from './lib/local-lib.js'
 
-import { setupAccessLib } from './lib/access'
+let accessLib, bucket
+if (process.env.NODE_ENV === 'production') {
+  // Get basic project info
+  const projectId = process.env.GOOGLE_CLOUD_PROJECT
+  console.log(`Starting server for project '${projectId}'...`)
 
-// Get basic project info
-const projectId = process.env.GOOGLE_CLOUD_PROJECT
-console.log(`Starting server for project '${projectId}'...`)
+  // have to use the 'metadata' server for project number
+  const isAvailable = await gcpMetadata.isAvailable()
+  if (!isAvailable) { // TODO: Support fallback modes and 'unverified' access when configured for it
+    throw new Error('Metadata not available, cannot proceed.')
+  }
+  console.log(`Metadata available: ${isAvailable}`)
 
-// have to use the 'metadata' server for project number
-const isAvailable = await gcpMetadata.isAvailable()
-if (!isAvailable) { // TODO: Support fallback modes and 'unverified' access when configured for it
-  throw new Error('Metadata not available, cannot proceed.')
+  const projectNumber = await gcpMetadata.project('numeric-project-id')
+
+  // setup access checker
+  accessLib = setupAccessLib({ projectId, projectNumber })
+
+  // setup storage stuff
+  const storage = new Storage()
+
+  const bucketId = process.env.BUCKET
+  if (!bucketId) {
+    throw new Error("No 'BUCKET' environment variable found (or is empty).")
+  }
+  // Useful info for the logs.
+  console.log(`Connecting to bucket: ${bucketId}`)
+  bucket = storage.bucket(bucketId)
 }
-console.log(`Metadata available: ${isAvailable}`)
-
-const projectNumber = await gcpMetadata.project('numeric-project-id')
-
-// setup access checker
-const accessLib = setupAccessLib({ projectId, projectNumber })
-
-// setup storage stuff
-const storage = new Storage()
-
-const bucketId = process.env.BUCKET
-if (!bucketId) {
-  throw new Error("No 'BUCKET' environment variable found (or is empty).")
+else {
+  accessLib = localAccessLib
+  bucket = localBucket
+  localBucket.setRoot(process.argv[2])
 }
-// Useful info for the logs.
-console.log(`Connecting to bucket: ${bucketId}`)
-const bucket = storage.bucket(bucketId)
 
 // setup web server stuff
 const app = express()
@@ -651,7 +661,8 @@ const indexBucket = async({ path, res, next }) => {
     // prefix. These can be mapped to logical sub-folders in our bucket scheme.
     const indexPager = (err, files, nextQuery, apiResponse) => {
       if (err) {
-        res.setStatus(500).send(`Error while processing results: ${err}`).end()
+        res.status(500).send(`Error while processing results: ${err}`).end()
+        return
       }
       // all good!
       if (apiResponse.prefixes && apiResponse.prefixes.length > 0) {
@@ -724,7 +735,9 @@ app.get('*', asyncHandler(commonProcessor(indexBucket)))
 // start the server
 app.listen(PORT, () => {
   console.log(`App listening on port ${PORT}`)
-  console.log('Press Ctrl+C to quit.')
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`To quit server:\nkill ${process.pid}`)
+  }
 })
 
 export default app

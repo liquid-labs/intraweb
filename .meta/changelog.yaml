@@ -92,3 +92,18 @@
   securityNotes: []
   drpBcpNotes: []
   backoutNotes: []
+- startTimestamp: 2021-09-25T17:46:13.501Z
+  startEpochMillis: 1632591973501
+  issues:
+    - https://github.com/Liquid-Labs/intraweb/issues/27
+  branch: 2021.09.25-zane@liquid-labs.com-support_local_viewing
+  branchFrom: 0946203b01ef96fbf92e9998da9a529dfbc0fbe6
+  workInitiator: zane@liquid-labs.com
+  branchInitiator: zane@liquid-labs.com
+  involvedProjects:
+    - "@liquid-labs/intraweb"
+  changeNotes:
+    - Support local viewing
+  securityNotes: []
+  drpBcpNotes: []
+  backoutNotes: []

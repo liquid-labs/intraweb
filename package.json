@@ -6,7 +6,7 @@
     "build": "make",
     "lint": "make lint",
     "lint:fix": "make lint-fix",
-    "start": "echo 'WARNING: the local app is not currently set up to connect properly to cloud services and the local service is of limited testing use.' && cd src/appengine && node app.js",
+    "start": "./bin/start.sh",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bin": {
