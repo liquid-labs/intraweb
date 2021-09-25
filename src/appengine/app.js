@@ -661,7 +661,8 @@ const indexBucket = async({ path, res, next }) => {
     // prefix. These can be mapped to logical sub-folders in our bucket scheme.
     const indexPager = (err, files, nextQuery, apiResponse) => {
       if (err) {
-        res.setStatus(500).send(`Error while processing results: ${err}`).end()
+        res.status(500).send(`Error while processing results: ${err}`).end()
+        return
       }
       // all good!
       if (apiResponse.prefixes && apiResponse.prefixes.length > 0) {
