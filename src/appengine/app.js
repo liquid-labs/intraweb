@@ -24,7 +24,7 @@ import marked from 'marked'
 import gcpMetadata from 'gcp-metadata'
 import { Storage } from '@google-cloud/storage'
 import { setupAccessLib } from './lib/access.js' // the '.js' allows us to run directly with node
-import { verifyAuthorization } from './lib/authorization.js'
+import { setupAuthorization } from './lib/authorization.js'
 // local file support
 import { localAccessLib, localBucket } from './lib/local-lib.js'
 import { htmlEnd, htmlOpen } from './lib/templates.js'
@@ -65,23 +65,26 @@ else {
 
 // now we look for an access authorization file
 const accessAuthorizations = bucket.file('_access-authorizations.json')
-const [ exists ] = await file.exists()
+const [exists] = await accessAuthorizations.exists()
+
+// TODO: move to lib
+// credit: https://stackoverflow.com/a/49428486/929494
+const streamToString = (stream) => {
+  const chunks = []
+  return new Promise((resolve, reject) => {
+    stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+    stream.on('error', (err) => reject(err))
+    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+  })
+}
 
 let authorizer
 if (exists) {
-  const reader = file.createReadStream()
-  // credit: https://stackoverflow.com/a/49428486/929494
-  function streamToString (stream) {
-    const chunks = [];
-    return new Promise((resolve, reject) => {
-      stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-      stream.on('error', (err) => reject(err));
-      stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    })
-  }
-  const accessAuthStr = await streamToString(stream)
+  const fileStream = accessAuthorizations.createReadStream()
+
+  const accessAuthStr = await streamToString(fileStream)
   const accessAuth = JSON.parse(accessAuthStr)
-  
+
   authorizer = setupAuthorization(accessAuth)
 }
 else {
@@ -301,14 +304,14 @@ const commonProcessor = (render) => async(req, res, next) => {
     res.status(401).send(`Request authorization token could not be verified.\n${e}`)
     return next(e)
   }
-  
+
   const userEmail = ticket.payload.email
   // Cloud storage doesn't like an initial '/', so we remove any.
   const path = decodeURIComponent(req.path.replace(startSlash, ''))
-  
-  const authorized = await verifyAuthorization({ user: userEmail, path })
+
+  const authorized = await authorizer.verifyAuthorization({ user : userEmail, path })
   if (!authorized) {
-    res.status(403).send(`${htmlOpen({ path: `FORBIDDEN: ${path}` })}\n\nYou do not have access to '${path}'.${htmlEnd()}`)
+    res.status(403).send(`${htmlOpen({ path : `FORBIDDEN: ${path}` })}\n\nYou do not have access to '${path}'.${htmlEnd()}`)
     return
   }
 
