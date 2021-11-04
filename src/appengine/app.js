@@ -35,15 +35,11 @@ const isProduction = process.env.NODE_ENV
 const projectId = process.env.GOOGLE_CLOUD_PROJECT
 
 if (isProduction === 'production') {
-  // Get basic project info
-  console.log(`Starting server for project '${projectId}'...`)
-
   // have to use the 'metadata' server for project number
   const isAvailable = await gcpMetadata.isAvailable()
   if (!isAvailable) { // TODO: Support fallback modes and 'unverified' access when configured for it
     throw new Error('Metadata not available, cannot proceed.')
   }
-  console.log(`Metadata available: ${isAvailable}`)
 
   const projectNumber = await gcpMetadata.project('numeric-project-id')
 
@@ -65,6 +61,31 @@ else {
   accessLib = localAccessLib
   bucket = localBucket
   localBucket.setRoot(process.argv[2])
+}
+
+// now we look for an access authorization file
+const accessAuthorizations = bucket.file('_access-authorizations.json')
+const [ exists ] = await file.exists()
+
+let authorizer
+if (exists) {
+  const reader = file.createReadStream()
+  // credit: https://stackoverflow.com/a/49428486/929494
+  function streamToString (stream) {
+    const chunks = [];
+    return new Promise((resolve, reject) => {
+      stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      stream.on('error', (err) => reject(err));
+      stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    })
+  }
+  const accessAuthStr = await streamToString(stream)
+  const accessAuth = JSON.parse(accessAuthStr)
+  
+  authorizer = setupAuthorization(accessAuth)
+}
+else {
+  authorizer = { verifyAuthorization : () => true }
 }
 
 // setup web server stuff
