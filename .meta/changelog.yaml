@@ -107,3 +107,18 @@
   securityNotes: []
   drpBcpNotes: []
   backoutNotes: []
+- startTimestamp: 2021-11-04T19:22:11.653Z
+  startEpochMillis: 1636053731653
+  issues:
+    - https://github.com/Liquid-Labs/intraweb/issues/29
+  branch: 2021.11.04-zane@liquid-labs.com-support_path_based_access
+  branchFrom: 23592e52bdf61e5c153a1baf2e9fc14b89bb864f
+  workInitiator: zane@liquid-labs.com
+  branchInitiator: zane@liquid-labs.com
+  involvedProjects:
+    - "@liquid-labs/intraweb"
+  changeNotes:
+    - Support path based access restrictions
+  securityNotes: []
+  drpBcpNotes: []
+  backoutNotes: []
