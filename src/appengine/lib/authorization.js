@@ -2,7 +2,7 @@ import { google } from 'googleapis'
 
 const setupAuthorization = ({ accessRules }) => {
   // accessRules:
-  // [ { re: "company-org-chart.png", groups: ['04iylrwe113ay6x', '82hawroceh'] }, {...} ]
+  // [ { re: "company-org-chart.png", groups: [ { name: "foo@acme.com", "id": "groups/04iylrwe113ay6x" },... ] }, ...]
   accessRules.forEach((ar) => {
     try {
       ar.re = new RegExp(ar.re)
@@ -16,7 +16,7 @@ const setupAuthorization = ({ accessRules }) => {
     verifyAuthorization : async({ user, path }) => {
       const { groups } = accessRules.find(({ re }) => path.match(re)) || {}
 
-      if (groups) {
+      if (groups && groups.length > 0) {
         const cloudidentity = google.cloudidentity('v1')
         const auth = new google.auth.GoogleAuth({
           scopes : ['https://www.googleapis.com/auth/cloud-identity.groups.readonly']
@@ -25,9 +25,9 @@ const setupAuthorization = ({ accessRules }) => {
         google.options({ auth : authClient })
 
         // To enable this call, you must give the service accounts 'Group Reader' (or better) admin rights in the Workspace admin console 'Admin roles | Groups Reader | Assign service accounts'
-        for (const group of groups) {
+        for (const { id: groupId } of groups) {
           const res = await cloudidentity.groups.memberships.checkTransitiveMembership({
-            parent : `groups/${group}`,
+            parent : groupId,
             query  : `member_key_id == '${user}'`
           })
 

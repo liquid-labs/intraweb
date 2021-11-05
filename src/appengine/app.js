@@ -65,11 +65,11 @@ else {
 
 // now we look for an access authorization file
 const accessAuthorizations = bucket.file('_access-authorizations.json')
-const [exists] = await accessAuthorizations.exists()
+const [ accessAuthorizationsExist ] = await accessAuthorizations.exists()
 
 // TODO: move to lib
 // credit: https://stackoverflow.com/a/49428486/929494
-const streamToString = (stream) => {
+const streamToString = ( stream ) => {
   const chunks = []
   return new Promise((resolve, reject) => {
     stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
@@ -79,15 +79,16 @@ const streamToString = (stream) => {
 }
 
 let authorizer
-if (exists) {
+if ( accessAuthorizationsExist ) {
   const fileStream = accessAuthorizations.createReadStream()
 
   const accessAuthStr = await streamToString(fileStream)
-  const accessAuth = JSON.parse(accessAuthStr)
+  const accessRules = JSON.parse(accessAuthStr)
 
-  authorizer = setupAuthorization(accessAuth)
+  authorizer = setupAuthorization({ accessRules })
 }
 else {
+  console.log("No '_access-authorizations.json' file found.")
   authorizer = { verifyAuthorization : () => true }
 }
 
