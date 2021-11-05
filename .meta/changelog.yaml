@@ -122,3 +122,18 @@
   securityNotes: []
   drpBcpNotes: []
   backoutNotes: []
+- startTimestamp: 2021-11-05T15:46:54.395Z
+  startEpochMillis: 1636127214395
+  issues:
+    - https://github.com/Liquid-Labs/intraweb/issues/31
+  branch: 2021.11.05-zane@liquid-labs.com-remove_dist_from_git
+  branchFrom: 812ae354c3192650368413b3f0572faadfee8523
+  workInitiator: zane@liquid-labs.com
+  branchInitiator: zane@liquid-labs.com
+  involvedProjects:
+    - "@liquid-labs/intraweb"
+  changeNotes:
+    - Remove dist from git
+  securityNotes: []
+  drpBcpNotes: []
+  backoutNotes: []

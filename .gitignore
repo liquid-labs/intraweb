@@ -1,7 +1,8 @@
-node_modules
-env-variables.yaml
 /.build
 /.deploy-app
 /.deploy-content
+/dist
+env-variables.yaml
+node_modules
 /yalc.lock
 /.yalc
