@@ -47,12 +47,16 @@ LINKS:=.build/gcloud/lib .build/gcloud/actions
 
 # distribution files
 BASH_SCRIPTS:=intraweb $(patsubst src/gcloud/actions/%.sh,%,$(SOURCEABLE_BUNDLES))
-DIST_SCRIPTS:=$(patsubst %, dist/%.sh, $(DIST_SCRIPTS))
+DIST_SCRIPTS:=$(patsubst %, dist/%.sh, $(BASH_SCRIPTS))
 
 DIST_FILES:=$(DIST_SCRIPTS) $(DIST_APP_NON_JS) $(DIST_APP)
 
 ### /end variables
 
+foo:
+	@echo $(BASH_SCRIPTS)
+	@echo $(DIST_SCRIPTS)
+	@echo $(DIST_FILES)
 
 all: $(DIST_FILES)
 
@@ -94,7 +98,7 @@ $(DIST_APP_NON_JS): dist/%: src/%
 	cp $< $@
 
 $(DIST_APP): dist/%: src/% $(APPENGINE_JS_SRC) src/appengine/package.json
-	cd src/appengine && JS_FILE="$(realpath $<)" JS_OUT="$(realpath $@)" $(CATALYST_SCRIPTS) build
+	cd src/appengine && JS_FILE="$(realpath $<)" JS_OUT="../../$@" $(CATALYST_SCRIPTS) build
 
 ######
 ### test directives
