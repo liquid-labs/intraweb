@@ -60,7 +60,9 @@ if (isProduction === 'production') {
 else {
   accessLib = localAccessLib
   bucket = localBucket
-  localBucket.setRoot(process.argv[2])
+  const localRoot = process.argv[2]
+  console.log(`Setting local root to: ${localRoot}`)
+  localBucket.setRoot(localRoot)
 }
 
 // now we look for an access authorization file
@@ -259,7 +261,7 @@ const indexBucket = async({ path, res, next }) => {
     // prefix. These can be mapped to logical sub-folders in our bucket scheme.
     const indexPager = (err, files, nextQuery, apiResponse) => {
       if (err) {
-        res.status(500).send(`Error while processing results: ${err}`).end()
+        res.status(500).send(`Error while index processing results: ${err}`).end()
         return
       }
       // all good!
@@ -306,14 +308,17 @@ const commonProcessor = (render) => async(req, res, next) => {
     return next(e)
   }
 
-  const userEmail = ticket.payload.email
   // Cloud storage doesn't like an initial '/', so we remove any.
   const path = decodeURIComponent(req.path.replace(startSlash, ''))
 
-  const authorized = await authorizer.verifyAuthorization({ user : userEmail, path })
-  if (!authorized) {
-    res.status(403).send(`${htmlOpen({ path : `FORBIDDEN: ${path}` })}\n\nYou do not have access to '${path}'.${htmlEnd()}`)
-    return
+  if (process.env.NODE_ENV === 'production') {
+    const userEmail = ticket.payload.email
+
+    const authorized = await authorizer.verifyAuthorization({ user : userEmail, path })
+    if (!authorized) {
+      res.status(403).send(`${htmlOpen({ path : `FORBIDDEN: ${path}` })}\n\nYou do not have access to '${path}'.${htmlEnd()}`)
+      return
+    }
   }
 
   res.on('error', (err) => {
