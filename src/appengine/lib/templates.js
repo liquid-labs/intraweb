@@ -136,8 +136,18 @@ h6 {
   font-size: 14px;
 }
 
+/* orig
 p, blockquote, ul, ol, dl, li, table, pre {
   margin: 15px 0;
+}
+*/
+
+p, blockquote, ul, ol, dl, table, pre {
+  margin: 0 0 8px;
+}
+
+li {
+  margin: 0 0 2px;
 }
 
 hr {
