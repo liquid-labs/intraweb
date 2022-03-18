@@ -185,9 +185,15 @@ const renderBreadcrumbs = (path, options) => {
   return output
 }
 
+
+const hiddenFileFlagger = /^[_.~]|favicon.*\.(png|ico)/i
+
 const renderFiles = ({ path, files, folders, res }) => {
   // Our 'path' comes in full relative from the root. However, we want to show only the relative bits.
   const deprefixer = new RegExp(`${path}/?`)
+  // We filter out 'hidden' files
+  files = files.filter((f) => !f.name.match(hiddenFileFlagger))
+  
   // open up with some boilerplace HTML
   let html = `${htmlOpen({ path })}
   <div id="breadcrumbs">
