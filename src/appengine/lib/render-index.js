@@ -9,8 +9,6 @@ import { getFileReader } from './read-stream.js'
 import { renderBreadcrumbs } from './render-breadcrumbs.js'
 import { htmlEnd, htmlOpen } from './templates.js'
 
-// Our 'path' comes in full relative from the root. However, we want to show only the relative bits.
-const deprefix = (path) => path.replace(new RegExp(`${path}/?`), '')
 const deMdRe = /\.md$/i
 const deMd = (fileName) => fileName.replace(deMdRe, '')
 
@@ -27,9 +25,9 @@ const hiddenFileFlagger = /^[_.~]|favicon.*\.(png|ico)|(global-)?inputs.yaml|~$/
 // if no name, then it's a link which is always shown (and !undefined === true)
 const fileFilter = (f) => !f.name?.match(hiddenFileFlagger)
 
-const renderIndex = async ({ bucket, files, folders, next, path, res }) => {
+const renderIndex = async({ bucket, files, folders, next, path, res }) => {
   const linksReader = // throws if there are issues
-    await getFileReader({ bucket, dieOnMissing: false, next, path : `${path}${PATH_INPUT_FILE}`, res })
+    await getFileReader({ bucket, dieOnMissing : false, next, path : `${path}${PATH_INPUT_FILE}`, res })
   if (linksReader !== false) { // and returns 'false' if the path does not exist; 404 already sent
     let inputData = ''
     linksReader

@@ -67,7 +67,7 @@ else {
   bucket = localBucket
   const localRoot = process.argv[2]
   if (localRoot === undefined) {
-    console.error(`Local root not defined; try: 'start.sh root/path' or 'npm run start -- root/path'`)
+    console.error('Local root not defined; try: \'start.sh root/path\' or \'npm run start -- root/path\'')
     process.exit(1)
   }
   console.log(`Setting local root to: ${localRoot}`)
