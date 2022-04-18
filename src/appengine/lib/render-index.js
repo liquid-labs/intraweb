@@ -12,7 +12,7 @@ import { htmlEnd, htmlOpen } from './templates.js'
 // 'foo/bar/My Doc.md') <- TODO: actually, the test may have been erroneous; it's possible we didn't rebuild before
 // deploying with the 'path' solution; in the end, the current solution is probably as good or slightly better, but we
 // do want to the note to be correct.
-const deprefixRe = /.*\/([^/]+)$/i
+const deprefixRe = /.*\/([^/]+)\/?$/i // trailing '/' is for paths
 const deprefix = (path) => path?.replace(deprefixRe, '$1')
 const deMdRe = /\.md$/i
 const deMd = (fileName) => fileName.replace(deMdRe, '')
@@ -206,8 +206,9 @@ const renderFolders = ({ folders = [], sectionTitle }) => {
   // else: we have folders to render
   let html = openSection({ items : folders, sectionTitle })
   for (const folder of folders) {
-    const label = toSentenceCase(folder)
-    const url = encodeURIComponent(folder.replace(endSlash, ''))
+    const baseName = deprefix(folder)
+    const label = toSentenceCase(baseName)
+    const url = encodeURIComponent(baseName.replace(endSlash, ''))
     html += `    <li><a href="${url}/">${label}</a></li>\n`
   }
 
