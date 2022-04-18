@@ -19,20 +19,19 @@
 
 import asyncHandler from 'express-async-handler'
 import express from 'express'
-import marked from 'marked'
+import { marked } from 'marked'
 // GCP AppEngine and CloudStorage support
 import gcpMetadata from 'gcp-metadata'
 import { Storage } from '@google-cloud/storage'
-import yaml from 'js-yaml'
 
 import { setupAccessLib } from './lib/access.js' // the '.js' allows us to run directly with node
 import { setupAuthorization } from './lib/authorization.js'
-improt { endSlash, PATH_INPUT_FILE } from './lib/constants.js'
+import { endSlash, fileRegex } from './lib/constants.js'
 // local file support
 import { localAccessLib, localBucket } from './lib/local-lib.js'
-import { getReadStream } from './lib/read-stream'
-import { renderBreadcrumbs } from './lib/render-breadcrumbs'
-import { renderIndex } from './lib/render-index'
+import { getFileReader } from './lib/read-stream.js'
+import { renderBreadcrumbs } from './lib/render-breadcrumbs.js'
+import { renderIndex } from './lib/render-index.js'
 import { htmlEnd, htmlOpen } from './lib/templates.js'
 
 let accessLib, bucket
@@ -67,17 +66,21 @@ else {
   accessLib = localAccessLib
   bucket = localBucket
   const localRoot = process.argv[2]
+  if (localRoot === undefined) {
+    console.error(`Local root not defined; try: 'start.sh root/path' or 'npm run start -- root/path'`)
+    process.exit(1)
+  }
   console.log(`Setting local root to: ${localRoot}`)
   localBucket.setRoot(localRoot)
 }
 
 // now we look for an access authorization file
 const accessAuthorizations = bucket.file('_access-authorizations.json')
-const [ accessAuthorizationsExist ] = await accessAuthorizations.exists()
+const [accessAuthorizationsExist] = await accessAuthorizations.exists()
 
 // TODO: move to lib
 // credit: https://stackoverflow.com/a/49428486/929494
-const streamToString = ( stream ) => {
+const streamToString = (stream) => {
   const chunks = []
   return new Promise((resolve, reject) => {
     stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
@@ -87,13 +90,14 @@ const streamToString = ( stream ) => {
 }
 
 let authorizer
-if ( accessAuthorizationsExist ) {
+if (accessAuthorizationsExist) {
   const fileStream = accessAuthorizations.createReadStream()
 
   const accessAuthStr = await streamToString(fileStream)
   const accessRules = JSON.parse(accessAuthStr)
 
   authorizer = setupAuthorization({ accessRules })
+  console.log('Access authorizations loaded.')
 }
 else {
   console.log("No '_access-authorizations.json' file found.")
@@ -105,7 +109,6 @@ const app = express()
 app.set('trust proxy', true)
 const PORT = process.env.PORT || 8080
 
-const fileRegex = /.*\.[^./]+$/
 const commonImageFiles = /\.(jpg|png|gif)$/i
 
 const markedOptions = {
@@ -114,7 +117,7 @@ const markedOptions = {
 
 const readBucketFile = async({ path, res, next }) => {
   try {
-    const reader = getFileReader({ next, path, res }) // throws if there are issues
+    const reader = await getFileReader({ bucket, next, path, res }) // throws if there are issues
     if (reader === false) { // and returns 'false' if the path does not exist; 404 already sent
       return
     }
@@ -199,7 +202,7 @@ const indexBucket = async({ path, res, next }) => {
           res.status(404).send(`No such folder: '${path}'`).end()
         }
         else {
-          renderIndex({ path, files, folders, res })
+          renderIndex({ bucket, path, files, folders, res })
         }
       }
     }
@@ -264,7 +267,7 @@ app.get('*', asyncHandler(commonProcessor(indexBucket)))
 app.listen(PORT, () => {
   console.log(`App listening on port ${PORT}`)
   if (process.env.NODE_ENV !== 'production') {
-    console.log(`To quit server:\nkill ${process.pid}`)
+    console.log(`To quit server: kill ${process.pid}`)
   }
 })
 

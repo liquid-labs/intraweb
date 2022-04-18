@@ -28,6 +28,7 @@
   "devDependencies": {
     "@liquid-labs/catalyst-scripts": "^1.0.0-alpha.53",
     "js-yaml": "^4.1.0",
+    "lodash.omit": "^4.5.0",
     "marked": "^4.0.14"
   },
   "liq": {

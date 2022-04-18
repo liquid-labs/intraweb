@@ -1,10 +1,12 @@
+import { endSlash, fileRegex } from './constants.js'
+
 const renderBreadcrumbs = (path, { format = 'html', showBreadcrumbs = true } = {}) => {
   if (showBreadcrumbs !== true || !path || path === '') {
     return ''
   }
   // else, we definitely expect output
-  let output = `<div id="breadcrumbs">\n  `
-  
+  let output = '<div id="breadcrumbs">\n  '
+
   // We remove the end slash to avoid an empty array element.
   const pathBits = path.replace(endSlash, '').split('/')
   // Each path bit represents a step back, but we step back into the prior element. E.g., if we see path "foo/bar",
