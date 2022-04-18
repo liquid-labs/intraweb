@@ -1,3 +1,5 @@
+const linkColor = '#4183C4'
+
 const htmlOpen = ({ path }) => `<!doctype html>
 <html>
   <head>
@@ -47,7 +49,7 @@ body > *:last-child {
 }
 
 a {
-  color: #4183C4;
+  color: ${linkColor};
   text-decoration: none;
 }
 
@@ -431,6 +433,20 @@ samp {
   background-color: #f8f8f8;
   border-radius: 3px;
   padding: 0 2px;
+}
+
+/* generic "external link" style
+  SVG credit:
+  https://steemit.com%2Funicode%2F@steemit.com/unicode/@markgritter/why-did-unicode-reject-the-external-link-symbol
+*/
+a[href*="//"]:after {
+  display: inline-block;
+  content: ' ';
+  /* SVG for 'external link' */
+  background-image: url('data:image/svg+xml; utf8, <svg viewBox="0 0 768 1024" xmlns="http://www.w3.org/2000/svg"><path fill="${encodeURIComponent(linkColor)}" d="M640 768H128V257.90599999999995L256 256V128H0v768h768V576H640V768zM384 128l128 128L320 448l128 128 192-192 128 128V128H384z"/></svg>');
+  background-size: 1em 1em;
+  height: 1em;
+  width: 1em;
 }
     </style>
   </head>

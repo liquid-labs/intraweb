@@ -40,7 +40,7 @@ const localBucket = {
           folders.push(entry.name)
         }
         else if (entry.isFile()) {
-          files.push({ name : entry.name })
+          files.push({ name : `${prefix}/${entry.name}` })
         } // else ignore
       }
 

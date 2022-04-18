@@ -22,15 +22,19 @@
     "express-async-handler": "^1.1.4",
     "gcp-metadata": "^4.3.0",
     "google-auth-library": "^7.7.0",
-    "googleapis": "^89.0.0"
+    "googleapis": "^89.0.0",
+    "js-convert-case": "^4.2.0"
   },
   "devDependencies": {
-    "@liquid-labs/catalyst-scripts": "^1.0.0-alpha.44",
-    "marked": "^3.0.2"
+    "@liquid-labs/catalyst-scripts": "^1.0.0-alpha.53",
+    "js-yaml": "^4.1.0",
+    "lodash.omit": "^4.5.0",
+    "marked": "^4.0.14"
   },
   "liq": {
     "eslint": {
       "target": "app.js lib/**/*.js"
-    }
+    },
+    "packageType": "node|server"
   }
 }

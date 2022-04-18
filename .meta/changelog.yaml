@@ -15,6 +15,7 @@
   backoutNotes: []
   contributors:
     - Zane Rockenbaugh <zane@liquid-labs.com>
+    - dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
 - issues:
     - https://github.com/Liquid-Labs/intraweb/issues/19
   branch: 2021.07.09-zane@liquid-labs.com-use_configured_bucket_in
@@ -134,6 +135,21 @@
     - "@liquid-labs/intraweb"
   changeNotes:
     - Remove dist from git
+  securityNotes: []
+  drpBcpNotes: []
+  backoutNotes: []
+- startTimestamp: 2022-04-16T20:16:20.699Z
+  startEpochMillis: 1650140180699
+  issues:
+    - https://github.com/Liquid-Labs/intraweb/issues/34
+  branch: 2022.04.16-zane@liquid-labs.com-support_rendering_external_links
+  branchFrom: 0c52774827ccfd9aeecdbcc8bbb78098b36f0367
+  workInitiator: zane@liquid-labs.com
+  branchInitiator: zane@liquid-labs.com
+  involvedProjects:
+    - "@liquid-labs/intraweb"
+  changeNotes:
+    - Support rendering external links on index
   securityNotes: []
   drpBcpNotes: []
   backoutNotes: []

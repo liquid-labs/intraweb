@@ -19,14 +19,19 @@
 
 import asyncHandler from 'express-async-handler'
 import express from 'express'
-import marked from 'marked'
+import { marked } from 'marked'
 // GCP AppEngine and CloudStorage support
 import gcpMetadata from 'gcp-metadata'
 import { Storage } from '@google-cloud/storage'
+
 import { setupAccessLib } from './lib/access.js' // the '.js' allows us to run directly with node
 import { setupAuthorization } from './lib/authorization.js'
+import { endSlash, fileRegex } from './lib/constants.js'
 // local file support
 import { localAccessLib, localBucket } from './lib/local-lib.js'
+import { getFileReader } from './lib/read-stream.js'
+import { renderBreadcrumbs } from './lib/render-breadcrumbs.js'
+import { renderIndex } from './lib/render-index.js'
 import { htmlEnd, htmlOpen } from './lib/templates.js'
 
 let accessLib, bucket
@@ -61,17 +66,21 @@ else {
   accessLib = localAccessLib
   bucket = localBucket
   const localRoot = process.argv[2]
+  if (localRoot === undefined) {
+    console.error('Local root not defined; try: \'start.sh root/path\' or \'npm run start -- root/path\'')
+    process.exit(1)
+  }
   console.log(`Setting local root to: ${localRoot}`)
   localBucket.setRoot(localRoot)
 }
 
 // now we look for an access authorization file
 const accessAuthorizations = bucket.file('_access-authorizations.json')
-const [ accessAuthorizationsExist ] = await accessAuthorizations.exists()
+const [accessAuthorizationsExist] = await accessAuthorizations.exists()
 
 // TODO: move to lib
 // credit: https://stackoverflow.com/a/49428486/929494
-const streamToString = ( stream ) => {
+const streamToString = (stream) => {
   const chunks = []
   return new Promise((resolve, reject) => {
     stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
@@ -81,13 +90,14 @@ const streamToString = ( stream ) => {
 }
 
 let authorizer
-if ( accessAuthorizationsExist ) {
+if (accessAuthorizationsExist) {
   const fileStream = accessAuthorizations.createReadStream()
 
   const accessAuthStr = await streamToString(fileStream)
   const accessRules = JSON.parse(accessAuthStr)
 
   authorizer = setupAuthorization({ accessRules })
+  console.log('Access authorizations loaded.')
 }
 else {
   console.log("No '_access-authorizations.json' file found.")
@@ -99,7 +109,6 @@ const app = express()
 app.set('trust proxy', true)
 const PORT = process.env.PORT || 8080
 
-const fileRegex = /.*\.[^./]+$/
 const commonImageFiles = /\.(jpg|png|gif)$/i
 
 const markedOptions = {
@@ -108,36 +117,28 @@ const markedOptions = {
 
 const readBucketFile = async({ path, res, next }) => {
   try {
-    // first, check if file exists.
-    const file = bucket.file(path)
-    const [exists] = await file.exists()
-    if (exists) {
-      const reader = file.createReadStream()
-      reader.on('error', (err) => {
-        console.error(`Error while reading file: ${err}`)
-        res.status(500).send(`Error reading file '${path}': ${err}`).end()
-      })
-
-      // is the file an image type?
-      const imageMatchResults = path.match(commonImageFiles)
-      if (path.match(commonImageFiles)) {
-        res.writeHead(200, { 'content-type' : `image/${imageMatchResults[1].toLowerCase()}` })
-      }
-
-      if (path.endsWith('.md')) {
-        let markdown = ''
-        reader.on('data', (d) => { markdown += d })
-          .on('end', () => {
-            const breadcrumbs = renderBreadcrumbs(path)
-            res.send(`${htmlOpen({ path })}\n\n${breadcrumbs}\n\n${marked(markdown, markedOptions)}\n\n${breadcrumbs}\n\n${htmlEnd()}`)
-          })
-      }
-      else {
-        reader.pipe(res)
-      }
+    const reader = await getFileReader({ bucket, next, path, res }) // throws if there are issues
+    if (reader === false) { // and returns 'false' if the path does not exist; 404 already sent
+      return
     }
-    else { // No such file, send 404
-      res.status(404).send(`No such file: '${path}'`).end()
+
+    // is the file an image type?
+    const imageMatchResults = path.match(commonImageFiles)
+    if (path.match(commonImageFiles)) {
+      res.writeHead(200, { 'content-type' : `image/${imageMatchResults[1].toLowerCase()}` })
+    }
+
+    if (path.endsWith('.md')) {
+      let markdown = ''
+      reader
+        .on('data', (d) => { markdown += d })
+        .on('end', () => {
+          const breadcrumbs = renderBreadcrumbs(path)
+          res.send(`${htmlOpen({ path })}\n\n${breadcrumbs}\n\n${marked(markdown, markedOptions)}\n\n${breadcrumbs}\n\n${htmlEnd()}`)
+        })
+    }
+    else {
+      reader.pipe(res)
     }
   }
   catch (err) {
@@ -148,89 +149,6 @@ const readBucketFile = async({ path, res, next }) => {
 }
 
 const startSlash = /^\//
-const endSlash = /\/$/
-
-const renderBreadcrumbs = (path, options) => {
-  let output = ''
-  if (!path || path === '') { return output }
-
-  const { format = 'html' } = options || {}
-
-  // We remove the end slash to avoid an empty array element.
-  const pathBits = path.replace(endSlash, '').split('/')
-  // Each path bit represents a step back, but we step back into the prior element. E.g., if we see path "foo/bar",
-  // so stepping back one takes us to foo and stepping back two takes us to the root. So we unshift a root element and
-  // pop the last element to make everything match up.
-  pathBits.unshift('&lt;root&gt;')
-  pathBits.pop()
-  const pathBitsLength = pathBits.length
-  // Breadcrumbs for a file end with the current dir and then move back. For a directory, you're stepping back in each
-  // iteration.
-  const linkBits = path.match(fileRegex)
-    ? pathBits.map((b, i) => (i + 1) === pathBitsLength
-      ? '.'
-      : Array(pathBitsLength - (i + 1)).fill('..').join('/')
-    )
-    : pathBits.map((b, i) => Array(pathBitsLength - i).fill('..').join('/'))
-
-  for (let i = 0; i < pathBits.length; i += 1) {
-    if (format === 'markdown') {
-      output += `[${pathBits[i]}/](${linkBits[i]}) `
-    }
-    else { // default to HTML
-      output += `<a href="${linkBits[i]}">${pathBits[i]}/</a> `
-    }
-  }
-
-  return output
-}
-
-
-const hiddenFileFlagger = /^[_.~]|favicon.*\.(png|ico)/i
-
-const renderFiles = ({ path, files, folders, res }) => {
-  // Our 'path' comes in full relative from the root. However, we want to show only the relative bits.
-  const deprefixer = new RegExp(`${path}/?`)
-  // We filter out 'hidden' files
-  files = files.filter((f) => !f.name.match(hiddenFileFlagger))
-  
-  // open up with some boilerplace HTML
-  let html = `${htmlOpen({ path })}
-  <div id="breadcrumbs">
-    ${renderBreadcrumbs(path)}
-  </div>
-  <h1>${path}</h1>`
-
-  if (folders.length > 0) {
-    html += `
-  <h2 id="folders">Folders</h2>
-    ${folders.length} total
-  <ul>\n`
-    folders.forEach(folder => {
-      const localRef = folder.replace(deprefixer, '')
-      html += `    <li><a href="${encodeURIComponent(localRef.replace(endSlash, ''))}/">${localRef}</a></li>\n`
-    })
-
-    html += '  </ul>'
-  }
-
-  if (files && files.length > 0) {
-    html += `
-  <h2 id="files">Files</h2>
-  ${files.length} total
-  <ul>\n`
-
-    files.forEach(file => {
-      const localRef = file.name.replace(deprefixer, '')
-      html += `    <li><a href="${encodeURIComponent(localRef)}">${localRef}</a></li>\n`
-    })
-
-    html += '  </ul>'
-  }
-  html += htmlEnd()
-
-  res.send(html).end()
-}
 
 const indexerQueryOptions = {
   delimiter                : '/',
@@ -284,7 +202,7 @@ const indexBucket = async({ path, res, next }) => {
           res.status(404).send(`No such folder: '${path}'`).end()
         }
         else {
-          renderFiles({ path, files, folders, res })
+          renderIndex({ bucket, path, files, folders, res })
         }
       }
     }
@@ -349,7 +267,7 @@ app.get('*', asyncHandler(commonProcessor(indexBucket)))
 app.listen(PORT, () => {
   console.log(`App listening on port ${PORT}`)
   if (process.env.NODE_ENV !== 'production') {
-    console.log(`To quit server:\nkill ${process.pid}`)
+    console.log(`To quit server: kill ${process.pid}`)
   }
 })
 
