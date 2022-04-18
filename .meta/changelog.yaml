@@ -15,6 +15,7 @@
   backoutNotes: []
   contributors:
     - Zane Rockenbaugh <zane@liquid-labs.com>
+    - dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
 - issues:
     - https://github.com/Liquid-Labs/intraweb/issues/19
   branch: 2021.07.09-zane@liquid-labs.com-use_configured_bucket_in
