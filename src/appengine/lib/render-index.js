@@ -1,5 +1,3 @@
-import * as fsPath from 'path'
-
 import { toKebabCase, toSentenceCase } from 'js-convert-case'
 import yaml from 'js-yaml'
 import omit from 'lodash.omit'
@@ -9,6 +7,13 @@ import { getFileReader } from './read-stream.js'
 import { renderBreadcrumbs } from './render-breadcrumbs.js'
 import { htmlEnd, htmlOpen } from './templates.js'
 
+// Our 'path' comes in full relative from the root. However, we want to show only the relative bits. We tried using
+// 'path.basename', which works fine locally, but fails in AppEngine (because there is no basename, the name is
+// 'foo/bar/My Doc.md') <- TODO: actually, the test may have been erroneous; it's possible we didn't rebuild before
+// deploying with the 'path' solution; in the end, the current solution is probably as good or slightly better, but we
+// do want to the note to be correct.
+const deprefixRe = /.*\/([^/]+)$/i
+const deprefix = (path) => path?.replace(deprefixRe, '$1')
 const deMdRe = /\.md$/i
 const deMd = (fileName) => fileName.replace(deMdRe, '')
 
@@ -21,16 +26,16 @@ const mixedSorter = (a, b) => {
 
 const linkSorter = ({ label: aLabel }, { label: bLabel }) => aLabel.localeCompare(bLabel)
 
-const hiddenFileFlagger = /^[_.~]|favicon.*\.(png|ico)|(global-)?inputs.yaml|~$/i
+const hiddenFileFlagger = /^[_.~]|favicon.*\.(png|ico)|(site-)?inputs.yaml|~$/i
 // if no name, then it's a link which is always shown (and !undefined === true)
-const fileFilter = (f) => !f.name?.match(hiddenFileFlagger)
+const fileFilter = (f) => !(deprefix(f.name)?.match(hiddenFileFlagger))
 
 const renderIndex = async({ bucket, files, folders, next, path, res }) => {
-  const linksReader = // throws if there are issues
+  const inputReader = // throws if there are issues
     await getFileReader({ bucket, dieOnMissing : false, next, path : `${path}${PATH_INPUT_FILE}`, res })
-  if (linksReader !== false) { // and returns 'false' if the path does not exist; 404 already sent
+  if (inputReader !== false) { // and returns 'false' if the path does not exist; 404 already sent
     let inputData = ''
-    linksReader
+    inputReader
       .on('data', (d) => { inputData += d })
       .on('end', () => {
         const { display: displaySettings = displayDefaults, links } =
@@ -177,7 +182,7 @@ const renderFiles = ({ files = [], sectionTitle }) => {
       url = encodeURIComponent(label)
     }
     else if (file.name !== undefined) { // then it's a Cloud Storage file
-      const baseName = fsPath.basename(file.name)
+      const baseName = deprefix(file.name)
       label = deMd(baseName)
       url = encodeURIComponent(baseName)
     }
