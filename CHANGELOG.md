@@ -23,3 +23,7 @@
 * _**hotfix**_: tweak styling for more legible lists _(zane@liquid-labs.com; 2021-11-30T21:19:10.000Z)_
 * _**hotfix**_: filter out files beginning with '_' or '.' and 'favicon's from showing up in index list _(zane@liquid-labs.com; 2022-03-18T23:11:13.000Z)_
 * Support rendering external links on index _(zane@liquid-labs.com; 2022-04-16T20:16:20.699Z)_
+
+## Release 1.0.0-alpha.3
+* _**hotfix**_: added trailing '/' to 'folder' entries to conform with Cloud Storage behavior _(zane@liquid-labs.com; 2022-04-18T11:31:17.000Z)_
+* _**hotfix**_: updated deprefixer to work with folders (subsections) as well as files _(zane@liquid-labs.com; 2022-04-18T11:31:46.000Z)_
