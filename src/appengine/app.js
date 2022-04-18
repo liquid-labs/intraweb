@@ -23,10 +23,16 @@ import marked from 'marked'
 // GCP AppEngine and CloudStorage support
 import gcpMetadata from 'gcp-metadata'
 import { Storage } from '@google-cloud/storage'
+import yaml from 'js-yaml'
+
 import { setupAccessLib } from './lib/access.js' // the '.js' allows us to run directly with node
 import { setupAuthorization } from './lib/authorization.js'
+improt { endSlash, PATH_INPUT_FILE } from './lib/constants.js'
 // local file support
 import { localAccessLib, localBucket } from './lib/local-lib.js'
+import { getReadStream } from './lib/read-stream'
+import { renderBreadcrumbs } from './lib/render-breadcrumbs'
+import { renderIndex } from './lib/render-index'
 import { htmlEnd, htmlOpen } from './lib/templates.js'
 
 let accessLib, bucket
@@ -108,36 +114,28 @@ const markedOptions = {
 
 const readBucketFile = async({ path, res, next }) => {
   try {
-    // first, check if file exists.
-    const file = bucket.file(path)
-    const [exists] = await file.exists()
-    if (exists) {
-      const reader = file.createReadStream()
-      reader.on('error', (err) => {
-        console.error(`Error while reading file: ${err}`)
-        res.status(500).send(`Error reading file '${path}': ${err}`).end()
-      })
-
-      // is the file an image type?
-      const imageMatchResults = path.match(commonImageFiles)
-      if (path.match(commonImageFiles)) {
-        res.writeHead(200, { 'content-type' : `image/${imageMatchResults[1].toLowerCase()}` })
-      }
-
-      if (path.endsWith('.md')) {
-        let markdown = ''
-        reader.on('data', (d) => { markdown += d })
-          .on('end', () => {
-            const breadcrumbs = renderBreadcrumbs(path)
-            res.send(`${htmlOpen({ path })}\n\n${breadcrumbs}\n\n${marked(markdown, markedOptions)}\n\n${breadcrumbs}\n\n${htmlEnd()}`)
-          })
-      }
-      else {
-        reader.pipe(res)
-      }
+    const reader = getFileReader({ next, path, res }) // throws if there are issues
+    if (reader === false) { // and returns 'false' if the path does not exist; 404 already sent
+      return
     }
-    else { // No such file, send 404
-      res.status(404).send(`No such file: '${path}'`).end()
+
+    // is the file an image type?
+    const imageMatchResults = path.match(commonImageFiles)
+    if (path.match(commonImageFiles)) {
+      res.writeHead(200, { 'content-type' : `image/${imageMatchResults[1].toLowerCase()}` })
+    }
+
+    if (path.endsWith('.md')) {
+      let markdown = ''
+      reader
+        .on('data', (d) => { markdown += d })
+        .on('end', () => {
+          const breadcrumbs = renderBreadcrumbs(path)
+          res.send(`${htmlOpen({ path })}\n\n${breadcrumbs}\n\n${marked(markdown, markedOptions)}\n\n${breadcrumbs}\n\n${htmlEnd()}`)
+        })
+    }
+    else {
+      reader.pipe(res)
     }
   }
   catch (err) {
@@ -148,89 +146,6 @@ const readBucketFile = async({ path, res, next }) => {
 }
 
 const startSlash = /^\//
-const endSlash = /\/$/
-
-const renderBreadcrumbs = (path, options) => {
-  let output = ''
-  if (!path || path === '') { return output }
-
-  const { format = 'html' } = options || {}
-
-  // We remove the end slash to avoid an empty array element.
-  const pathBits = path.replace(endSlash, '').split('/')
-  // Each path bit represents a step back, but we step back into the prior element. E.g., if we see path "foo/bar",
-  // so stepping back one takes us to foo and stepping back two takes us to the root. So we unshift a root element and
-  // pop the last element to make everything match up.
-  pathBits.unshift('&lt;root&gt;')
-  pathBits.pop()
-  const pathBitsLength = pathBits.length
-  // Breadcrumbs for a file end with the current dir and then move back. For a directory, you're stepping back in each
-  // iteration.
-  const linkBits = path.match(fileRegex)
-    ? pathBits.map((b, i) => (i + 1) === pathBitsLength
-      ? '.'
-      : Array(pathBitsLength - (i + 1)).fill('..').join('/')
-    )
-    : pathBits.map((b, i) => Array(pathBitsLength - i).fill('..').join('/'))
-
-  for (let i = 0; i < pathBits.length; i += 1) {
-    if (format === 'markdown') {
-      output += `[${pathBits[i]}/](${linkBits[i]}) `
-    }
-    else { // default to HTML
-      output += `<a href="${linkBits[i]}">${pathBits[i]}/</a> `
-    }
-  }
-
-  return output
-}
-
-
-const hiddenFileFlagger = /^[_.~]|favicon.*\.(png|ico)/i
-
-const renderFiles = ({ path, files, folders, res }) => {
-  // Our 'path' comes in full relative from the root. However, we want to show only the relative bits.
-  const deprefixer = new RegExp(`${path}/?`)
-  // We filter out 'hidden' files
-  files = files.filter((f) => !f.name.match(hiddenFileFlagger))
-  
-  // open up with some boilerplace HTML
-  let html = `${htmlOpen({ path })}
-  <div id="breadcrumbs">
-    ${renderBreadcrumbs(path)}
-  </div>
-  <h1>${path}</h1>`
-
-  if (folders.length > 0) {
-    html += `
-  <h2 id="folders">Folders</h2>
-    ${folders.length} total
-  <ul>\n`
-    folders.forEach(folder => {
-      const localRef = folder.replace(deprefixer, '')
-      html += `    <li><a href="${encodeURIComponent(localRef.replace(endSlash, ''))}/">${localRef}</a></li>\n`
-    })
-
-    html += '  </ul>'
-  }
-
-  if (files && files.length > 0) {
-    html += `
-  <h2 id="files">Files</h2>
-  ${files.length} total
-  <ul>\n`
-
-    files.forEach(file => {
-      const localRef = file.name.replace(deprefixer, '')
-      html += `    <li><a href="${encodeURIComponent(localRef)}">${localRef}</a></li>\n`
-    })
-
-    html += '  </ul>'
-  }
-  html += htmlEnd()
-
-  res.send(html).end()
-}
 
 const indexerQueryOptions = {
   delimiter                : '/',
@@ -284,7 +199,7 @@ const indexBucket = async({ path, res, next }) => {
           res.status(404).send(`No such folder: '${path}'`).end()
         }
         else {
-          renderFiles({ path, files, folders, res })
+          renderIndex({ path, files, folders, res })
         }
       }
     }

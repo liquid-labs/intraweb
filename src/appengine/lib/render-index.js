@@ -1,0 +1,207 @@
+import { toKebabCase } from 'js-convert-case'
+
+import { displayDefaults, endSlash } from './constants.js'
+import { renderBreadcrumbs } from './renderBreadcrumbs.js'
+
+// Our 'path' comes in full relative from the root. However, we want to show only the relative bits.
+const deprefixer = new RegExp(`${path}/?`)
+
+const mixedSorter = (a, b) => {
+  const aLabel = typeof a === 'string' ? a : a.label
+  const bLabel = typeof b === 'string' ? b : b.label
+  
+  return a.localeCompare(b)
+}
+
+const linkSorter = ({ label: aLabel }, { label: bLabel }) => aLabel.localeCompare(bLabel)
+
+const hiddenFileFlagger = /^[_.~]|favicon.*\.(png|ico)/i
+const fileFilter = (f) => !f.name.match(hiddenFileFlagger)
+
+const renderIndex = ({ path, files, folders, res }) => {
+  const linksReader = getFileReader({ next, path: `${path}${PATH_INPUT_FILE}`, res }) // throws if there are issues
+  if (linksReader !== false) { // and returns 'false' if the path does not exist; 404 already sent
+    let inputData = ''
+    linksReader
+      .on('data', (d) => { inputData += d })
+      .on('end', () => {
+        const { display: displaySettings = displayDefaults, links } =
+          yaml.load(inputData, { schema: yaml.FAILSAFE_SCHEMA })
+        // TODO: here's where we would combine with global settings
+        renderFormatted({ displaySettings, path, files, folders, links, res })
+      })
+  }
+  else {
+    renderFormatted({ displaySettings: displayDefaults, path, files, folders, res })
+  }
+  
+  html += htmlEnd()
+
+  res.send(html).end()
+}
+
+/**
+* Renders an index page after after all the necessary data has been gathered. I.e., after all asynchronous operations
+* have completed. This includes processing of the data such as recoconciling potentially incomplete section ordering
+* and sorting of items within each section.
+*
+* The basic layout is:
+* 1. Open the page.
+* 2. Process configuration and defaults to determine the section order.
+* 3. Pass control to subroutines to generate the various sections based on whether it's files (=~ "Documents"), folders
+*   (=~ "Subsections"), or an arbitrary section of links.
+*/
+const renderFormatted = ({
+  displaySettings,
+  files = [],
+  folders = [],
+  links = [],
+  path,
+  res
+}) => {
+  // 1. Open the page.
+  let html = `${htmlOpen({ path })}
+${renderBreadcrumbs(path, { ...displaySettings })}
+
+<h1>${path}</h1>\n\n`
+
+  // 2. Process configuration and defaults to determine the section order.
+  // 2.a. Gather base config settings or defaults.
+  const { sectionTitles = {} } = displaySettings
+  const { Documents = "Documents", Subsections = "Subsections" } = sectionTitles
+  const { sectionOrder = [ Documents, Subsections ] } = displaySettings
+  // 2.b. Process links data to create a final list of files, folders, and additional link sections.
+  const pageSections = processSections({ files, folders, links, ...displaySettings })
+  // 2.c. Determine the 'finalOrder' of the discovered 'pageSections'
+  const alphaSections = Object.keys(pageSections).sort()
+  const alphaBurndown = [ ...alphaSections ]
+  const finalOrder = []
+  for (const section of sectionOrder) {
+    const alphaIndex = alphaBurndown.indexOf(section)
+    if (alphaIndex === -1) {
+      throw new Error(`Unmatched section '${section}' specified or implied in section order could not be matched to actual sections: ${alphaSections.join(', ')}.`)
+    }
+    finalOrder.push(section)
+    alphaBurndown.splce(alphaIndex, 1)
+  }
+  finalOrder.push(...alphaBurndown)
+  
+  // 3. Pass control to subroutines to generate the various sections...
+  for (const sectionTitle of finalOrder) {
+    if (section === Documents) {
+      html += renderFiles({ files, sectionTitle })
+    }
+    else if (section === Subsections) {
+      html += renderFolders({ folders, sectionTitle })
+    }
+    else {
+      html += renderLinks({ links: pageSections[sectionTitle], sectionTitle })
+    }
+  }
+}
+
+/**
+* Processes the 'links' and combines with 'files', 'folders', or arbitrarily titled sections of links into sorted lists.
+*/
+const processSections = ({
+  files,
+  folders,
+  links,
+  linkSection = 'Documents',
+  sectionTitles
+}) => {
+  const { Documents = "Documents", Subsections = "Subsections" } = sectionTitles
+  
+  const pageSections = {
+    [ Documents ] : files,
+    [ Subsections ] : folders
+  }
+  let sortFiles = false
+  let sortFolders = false
+  
+  for (const { label, link, section = linkSection } of links) {
+    if (linkSection === 'Documents') {
+      files.push(link)
+      sortFiles = true
+    }
+    else if (linkSection === 'Subsection') {
+      folders.push(link)
+      sortFolders = true
+    }
+    else {
+      const list = pageSections[linkSection] || []
+      list.push(link)
+      pageSections[linkSection] = list
+    }
+  }
+  
+  // now (re-)sort as needed
+  for (const [ sort, list ] of [ [ sortFiles, files ], [ sortFolders, folders ] ]) {
+    if (sort) {
+      list.sort(mixedSorter)
+    }
+  }
+  for (const section in pageSections) {
+    pageSections.sort(linkSorter)
+  }
+  
+  return pageSections
+}
+
+/**
+* Generates an HTML snippet for a list of files (=~ "Documents").
+*/
+const renderFiles = ({ files = [], sectionTitle }) => {
+  // We filter out 'hidden' files
+  files = files.filter(fileFilter)
+  
+  if (files.length === 0) {
+    return ''
+  }
+  // else: we have files to render
+  const html = `
+  <h2 id="${toKebabCase(sectionTitle)}">${sectionTitle}</h2>
+  ${files.length} total
+  <ul>\n`
+
+  for (const file of files) {
+    let label, url
+    let external = false
+    if (typeof file === 'string') {
+      label = file
+      url = encodeURIComponent(label)
+    }
+    else if (file.name !== undefined) { // then it's a Cloud Storage file
+      label = file.name.replace(deprefixer, '')
+      url = encodeURIComponent(label)
+    }
+    else if (file.label !== undefined) { // then it's a 'links' item
+      label = file.label
+      url = file.url
+      external = file.external !== false
+    }
+    html += `    <li><a href="${url}">${label}</a></li>\n`
+  }
+
+  return html + '  </ul>\n'
+}
+
+/**
+* Generates an HTML snippet for a list of folders (=~ "Subsections").
+*/
+const renderFolders = ({ folders = [], sectionTitle }) => {
+  if (folders.length === 0) {
+    return ''
+  }
+  // else: we have folders to render
+  const html = `
+  <h2 id="${toKebabCase(sectionTitle)}">${sectionTitle}</h2>
+    ${folders.length} total
+  <ul>\n`
+  folders.forEach(folder => {
+    const localRef = folder.replace(deprefixer, '')
+    html += `    <li><a href="${encodeURIComponent(localRef.replace(endSlash, ''))}/">${localRef}</a></li>\n`
+  })
+
+  return html + '  </ul>\n'
+}
