@@ -67,7 +67,7 @@ const renderFormatted = ({
   let html = `${htmlOpen({ path })}
 ${renderBreadcrumbs(path, { ...displaySettings })}
 
-<h1>${path}</h1>\n\n`
+<h1>${path.split('/').filter(/* for trailing '/' */ (p) => p).map((p) => toSentenceCase(p)).join(' | ')}</h1>\n\n`
 
   // 2. Process configuration and defaults to determine the section order.
   // 2.a. Gather base config settings or defaults.

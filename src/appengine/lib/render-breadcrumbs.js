@@ -1,3 +1,5 @@
+import { toSentenceCase } from 'js-convert-case'
+
 import { endSlash, fileRegex } from './constants.js'
 
 const renderBreadcrumbs = (path, { format = 'html', showBreadcrumbs = true } = {}) => {
@@ -25,11 +27,13 @@ const renderBreadcrumbs = (path, { format = 'html', showBreadcrumbs = true } = {
     : pathBits.map((b, i) => Array(pathBitsLength - i).fill('..').join('/'))
 
   for (let i = 0; i < pathBits.length; i += 1) {
+    const label = i === 0 ? pathBits[i] : toSentenceCase(pathBits[i])
+    const seperator = i > 0 ? ' | ' : ''
     if (format === 'markdown') {
-      output += `[${pathBits[i]}/](${linkBits[i]}) `
+      output += `${seperator}[${label}](${linkBits[i]})`
     }
     else { // default to HTML
-      output += `<a href="${linkBits[i]}">${pathBits[i]}/</a> `
+      output += `${seperator}<a href="${linkBits[i]}">${label}</a>`
     }
   }
 
