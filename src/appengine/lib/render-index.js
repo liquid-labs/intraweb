@@ -1,3 +1,5 @@
+import * as fsPath from 'path'
+
 import { toKebabCase, toSentenceCase } from 'js-convert-case'
 import yaml from 'js-yaml'
 import omit from 'lodash.omit'
@@ -177,8 +179,9 @@ const renderFiles = ({ files = [], sectionTitle }) => {
       url = encodeURIComponent(label)
     }
     else if (file.name !== undefined) { // then it's a Cloud Storage file
-      label = deMd(file.name)
-      url = encodeURIComponent(file.name)
+      const baseName = fsPath.basename(file.name)
+      label = deMd(baseName)
+      url = encodeURIComponent(baseName)
     }
     else if (file.label !== undefined) { // then it's a 'links' item
       label = file.label
