@@ -34,6 +34,7 @@
   "liq": {
     "eslint": {
       "target": "app.js lib/**/*.js"
-    }
+    },
+    "packageType": "node|server"
   }
 }
