@@ -37,7 +37,7 @@ const localBucket = {
       const files = []
       for (const entry of entries) {
         if (entry.isDirectory()) {
-          folders.push(entry.name)
+          folders.push(`${prefix}/${entry.name}/`)
         }
         else if (entry.isFile()) {
           files.push({ name : `${prefix}/${entry.name}` })
