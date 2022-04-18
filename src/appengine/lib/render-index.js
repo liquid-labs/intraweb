@@ -21,7 +21,7 @@ const mixedSorter = (a, b) => {
 
 const linkSorter = ({ label: aLabel }, { label: bLabel }) => aLabel.localeCompare(bLabel)
 
-const hiddenFileFlagger = /^[_.~]|favicon.*\.(png|ico)/i
+const hiddenFileFlagger = /^[_.~]|favicon.*\.(png|ico)|(global-)?inputs.yaml|~$/i
 // if no name, then it's a link which is always shown (and !undefined === true)
 const fileFilter = (f) => !f.name?.match(hiddenFileFlagger)
 
