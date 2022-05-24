@@ -1,4 +1,5 @@
-const linkColor = '#4183C4'
+const headerColor = 'darkblue'
+const linkColor = 'darkblue'
 
 const htmlOpen = ({ path }) => `<!doctype html>
 <html>
@@ -69,12 +70,18 @@ a.anchor {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  margin: 20px 0 10px;
+  margin: 20px 0 5px;
   padding: 0;
   font-weight: bold;
   -webkit-font-smoothing: antialiased;
   cursor: text;
   position: relative;
+  color: darkblue;
+  text-decoration: underline;
+}
+
+h1 + h2, h2 + h3, h3 + h4, h4 + h5, h5 + h6 {
+  margin-top: 0;
 }
 
 h2:first-child, h1:first-child, h1:first-child + h2, h3:first-child, h4:first-child, h5:first-child, h6:first-child {
@@ -112,17 +119,16 @@ h6 tt, h6 code {
 
 h1 {
   font-size: 28px;
-  color: black;
 }
 
 h2 {
   font-size: 24px;
   border-bottom: 1px solid #cccccc;
-  color: black;
 }
 
 h3 {
   font-size: 18px;
+  font-style: italic;
 }
 
 h4 {
@@ -154,7 +160,7 @@ li {
 
 hr {
   border: 0 none;
-  background-color: #cccccc;
+  background-color: darkblue;
   height: 4px;
   padding: 0;
 }
