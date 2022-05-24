@@ -154,7 +154,7 @@ li {
 
 hr {
   border: 0 none;
-  color: #cccccc;
+  background-color: #cccccc;
   height: 4px;
   padding: 0;
 }
