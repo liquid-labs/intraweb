@@ -7,7 +7,10 @@ intraweb-deploy() {
   [[ -n "${CONFIRM:-}" ]] || APP_DEPLOY_OPTS="${APP_DEPLOY_OPTS} --quiet" # skips delpoy confirm
 
   [[ -n "${NO_DEPLOY_CONTENT:-}" ]] || \
-    gsutil -m rsync -d -r "${CONTENT_SOURCE}" gs://${BUCKET}
+    {
+      echo "Syncing '${CONTENT_SOURCE}' to 'gs://${BUCKET}'..."
+      gsutil -o "GSUtil:parallel_process_count=1" -m rsync -d -r "${CONTENT_SOURCE}" gs://${BUCKET}
+    }
 
   [[ -n "${NO_DEPLOY_APP:-}" ]] || {
     local APP_ENGINE_DIR
