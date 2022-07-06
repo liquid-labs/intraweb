@@ -150,7 +150,7 @@ p, blockquote, ul, ol, dl, li, table, pre {
 }
 */
 
-p, blockquote, ul, ol, dl, table, pre {
+p, blockquote, ul, ol, dl, table, pre, summary {
   margin: 0 0 8px;
 }
 
