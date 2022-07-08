@@ -150,8 +150,14 @@ p, blockquote, ul, ol, dl, li, table, pre {
 }
 */
 
-p, blockquote, ul, ol, dl, table, pre, summary {
+p, blockquote, ul, ol, dl, table, pre, details > summary {
   margin: 0 0 8px;
+}
+
+/* fix 'summary' display (as in 'detail-summary'); see 'details > summary' above */
+
+details > summary > p {
+  display: inline;
 }
 
 li {
