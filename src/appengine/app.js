@@ -127,8 +127,13 @@ const readBucketFile = async({ path, res, next }) => {
     if (path.match(commonImageFiles)) {
       res.writeHead(200, { 'content-type' : `image/${imageMatchResults[1].toLowerCase()}` })
     }
+    else if (path.endsWith('.pdf')) {
+      res.writeHead(200, { 'content-type' : 'application/pdf' })
+    }
 
     if (path.endsWith('.md')) {
+      // TODO: not clear why we send 'content-type' above, but if we do it here, we get a '500' error. Doing in the 'reader.on' handler creates a different error (502 bad gateway)
+      // res.writeHead(200, { 'content-type' : 'text/html' })
       let markdown = ''
       reader
         .on('data', (d) => { markdown += d })
