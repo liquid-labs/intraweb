@@ -451,7 +451,7 @@ samp {
   SVG credit:
   https://steemit.com%2Funicode%2F@steemit.com/unicode/@markgritter/why-did-unicode-reject-the-external-link-symbol
 */
-a[href*="//"]:after {
+a[href*="//"]:not(a[href*="moca-financial"]):after {
   display: inline-block;
   content: ' ';
   /* SVG for 'external link' */
@@ -459,6 +459,10 @@ a[href*="//"]:after {
   background-size: 1em 1em;
   height: 1em;
   width: 1em;
+}
+
+p, ol, ul {
+  max-width: 60rem;
 }
     </style>
   </head>
